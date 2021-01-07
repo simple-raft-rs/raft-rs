@@ -25,6 +25,7 @@ extern crate alloc;
 mod macros;
 
 pub mod core;
+pub mod log;
 mod prelude;
 mod protobufs {
     include!(concat!(env!("OUT_DIR"), "/raft.protobufs.rs"));

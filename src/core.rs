@@ -23,6 +23,7 @@ use core::hash::{Hash, Hasher};
 use core::iter;
 use core::ops::{Add, AddAssign, Sub};
 use crate::prelude::*;
+use crate::log::{RaftLog, RaftLogAppendError};
 use log::{error, warn, info, debug};
 use prost::Message;
 use rand_core::RngCore;
@@ -128,29 +129,6 @@ pub enum SendableRaftMessage<NodeId> {
         message: RaftMessage,
         from:    NodeId,
     },
-}
-
-pub trait RaftLog {
-    fn append(&mut self, log_entry: LogEntry) -> Result<(), RaftLogAppendError>;
-    fn pop_front(&mut self, truncate_to: LogIdx) -> Result<(), ()>;
-    fn cancel_from(&mut self, from_log_idx: LogIdx) -> Result<usize, ()>;
-    fn get(&mut self, log_idx: LogIdx) -> Option<LogEntry>;
-    fn get_term(&mut self, log_idx: LogIdx) -> Option<TermId>;
-    fn get_len(&mut self, log_idx: LogIdx) -> Option<usize>;
-    fn prev_idx(&self) -> LogIdx;
-    fn last_idx(&self) -> LogIdx;
-    fn last_term(&self) -> TermId;
-}
-
-#[allow(variant_size_differences)]
-pub enum RaftLogAppendError {
-    TooLarge {
-        size: usize,
-    },
-    OutOfSpace {
-        log_entry: LogEntry,
-    },
-    InternalError,
 }
 
 impl<Log, Random, NodeId> RaftState<Log, Random, NodeId>
