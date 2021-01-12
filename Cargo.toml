@@ -13,3 +13,7 @@ rand_core = { version = "0.6", default-features = false, features = [] }
 
 [build-dependencies]
 prost-build = { version = "0.7" }
+
+[dev-dependencies]
+itertools   = "0.10"
+rand_chacha = "0.3"

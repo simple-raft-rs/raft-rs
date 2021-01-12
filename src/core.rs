@@ -173,6 +173,10 @@ where Log: RaftLog,
         &self.group
     }
 
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
     pub fn take_committed_transaction(&mut self) -> Option<LogEntry> {
         if self.last_applied < self.commit_idx {
             let log_idx       = self.last_applied + 1;
