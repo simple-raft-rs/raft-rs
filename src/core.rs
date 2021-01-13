@@ -25,20 +25,19 @@ use core::ops::{Add, AddAssign, Sub};
 use crate::prelude::*;
 use crate::log::{RaftLog, RaftLogAppendError};
 use log::{error, warn, info, debug};
-use prost::Message;
 use rand_core::RngCore;
 use self::LeadershipState::*;
 
-pub use crate::protobufs::AppendRequest;
-pub use crate::protobufs::AppendResponse;
-pub use crate::protobufs::LogEntry;
-pub use crate::protobufs::LogIdx;
-pub use crate::protobufs::TermId;
-pub use crate::protobufs::RaftGroupId;
-pub use crate::protobufs::RaftMessage;
-pub use crate::protobufs::raft_message::Rpc as Rpc;
-pub use crate::protobufs::VoteRequest;
-pub use crate::protobufs::VoteResponse;
+pub use crate::message::AppendRequest;
+pub use crate::message::AppendResponse;
+pub use crate::message::LogEntry;
+pub use crate::message::LogIdx;
+pub use crate::message::TermId;
+pub use crate::message::RaftGroupId;
+pub use crate::message::RaftMessage;
+pub use crate::message::Rpc;
+pub use crate::message::VoteRequest;
+pub use crate::message::VoteResponse;
 
 pub struct ReplicationState {
     // \* The next entry to send to each follower.
@@ -461,7 +460,7 @@ where Log: RaftLog,
                         if !first_entry && entries_size == max_entries_size {
                             None
                         } else {
-                            entries_size = entries_size.saturating_add(log_entry.encoded_len());
+                            entries_size = entries_size.saturating_add(self.log.entry_len(&log_entry));
                             if first_entry || entries_size <= max_entries_size {
                                 Some(log_entry)
                             } else {

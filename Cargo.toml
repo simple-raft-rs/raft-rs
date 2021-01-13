@@ -8,11 +8,8 @@ edition = "2018"
 [dependencies]
 bytes     = { version = "1.0", default-features = false, features = [] }
 log       = "0.4"
-prost     = { version = "0.7", default-features = false, features = ["prost-derive"] }
+prost     = { version = "0.7", default-features = false, features = ["prost-derive"], optional = true }
 rand_core = { version = "0.6", default-features = false, features = [] }
-
-[build-dependencies]
-prost-build = { version = "0.7" }
 
 [dev-dependencies]
 itertools   = "0.10"

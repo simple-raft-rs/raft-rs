@@ -21,12 +21,13 @@
 pub mod tests;
 pub mod mem;
 
-use crate::protobufs::{LogEntry, LogIdx, TermId};
+use crate::message::{LogEntry, LogIdx, TermId};
 
 pub trait RaftLog {
     fn append(&mut self, log_entry: LogEntry) -> Result<(), RaftLogAppendError>;
     fn pop_front(&mut self, truncate_to: LogIdx) -> Result<(), ()>;
     fn cancel_from(&mut self, from_log_idx: LogIdx) -> Result<usize, ()>;
+    fn entry_len(&self, log_entry: &LogEntry) -> usize;
     fn get(&mut self, log_idx: LogIdx) -> Option<LogEntry>;
     fn get_term(&mut self, log_idx: LogIdx) -> Option<TermId>;
     fn get_len(&mut self, log_idx: LogIdx) -> Option<usize>;

@@ -17,7 +17,7 @@
 
 use alloc::collections::VecDeque;
 use core::convert::{TryFrom, TryInto};
-use crate::protobufs::{LogEntry, LogIdx, TermId};
+use crate::message::{LogEntry, LogIdx, TermId};
 use super::{RaftLog, RaftLogAppendError};
 
 pub struct RaftLogMemory {
@@ -80,6 +80,9 @@ impl RaftLog for RaftLogMemory {
                 Ok(cancelled_len)
             }
         }
+    }
+    fn entry_len(&self, log_entry: &LogEntry) -> usize {
+        log_entry.data.capacity()
     }
     fn get(&mut self, log_idx: LogIdx) -> Option<LogEntry> {
         let index = self.entry_index(log_idx)?;

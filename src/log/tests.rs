@@ -16,7 +16,7 @@
  */
 
 use crate::prelude::*;
-use crate::protobufs::{LogEntry, LogIdx, TermId};
+use crate::message::{LogEntry, LogIdx, TermId};
 use super::RaftLog;
 
 //
