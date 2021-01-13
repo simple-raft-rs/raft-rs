@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use raft::core::{RaftGroupId, RaftMessage, RaftState, Rpc, SendableRaftMessage, TermId};
+use raft::core::{RaftMessage, RaftState, Rpc, SendableRaftMessage, TermId};
 use raft::log::mem::RaftLogMemory;
 use rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -59,7 +59,6 @@ pub fn init_random() -> ChaChaRng {
 pub fn raft(node_id: u64, peers: Vec<u64>, log: Option<RaftLogMemory>, random: &mut impl RngCore) -> TestRaft {
     TestLogger::init();
     RaftState::new(
-        RaftGroupId { id: vec![1] },
         NodeId(node_id),
         peers.into_iter().map(NodeId).collect(),
         log.unwrap_or_else(|| RaftLogMemory::new(0, usize::max_value())),
@@ -76,7 +75,6 @@ pub fn config() -> TestRaftGroupConfig {
 
 pub fn send(raft: &mut TestRaft, from: u64, term: TermId, rpc: Rpc) -> Option<SendableRaftMessage<NodeId>> {
     raft.receive(RaftMessage {
-        group: raft.group_id().clone(),
         term,
         rpc: Some(rpc),
     }, NodeId(from))

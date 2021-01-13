@@ -21,8 +21,6 @@ use crate::prelude::*;
 #[cfg_attr(feature = "prost", derive(prost::Message))]
 #[cfg_attr(not(feature = "prost"), derive(Debug, Default))]
 pub struct RaftMessage {
-    #[cfg_attr(feature = "prost", prost(message, required, tag="1"))]
-    pub group: RaftGroupId,
     #[cfg_attr(feature = "prost", prost(message, required, tag="2"))]
     pub term: TermId,
     #[cfg_attr(feature = "prost", prost(oneof="Rpc", tags="3, 4, 5, 6"))]
@@ -95,14 +93,6 @@ pub struct LogEntry {
     pub term: TermId,
     #[cfg_attr(feature = "prost", prost(bytes="vec", required, tag="2"))]
     pub data: Vec<u8>,
-}
-
-#[derive(Clone, PartialEq)]
-#[cfg_attr(feature = "prost", derive(prost::Message))]
-#[cfg_attr(not(feature = "prost"), derive(Debug, Default))]
-pub struct RaftGroupId {
-    #[cfg_attr(feature = "prost", prost(bytes="vec", required, tag="1"))]
-    pub id: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq)]

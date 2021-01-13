@@ -19,7 +19,6 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::cmp::Ordering;
 use core::fmt;
-use core::hash::{Hash, Hasher};
 use core::iter;
 use core::ops::{Add, AddAssign, Sub};
 use crate::prelude::*;
@@ -33,7 +32,6 @@ pub use crate::message::AppendResponse;
 pub use crate::message::LogEntry;
 pub use crate::message::LogIdx;
 pub use crate::message::TermId;
-pub use crate::message::RaftGroupId;
 pub use crate::message::RaftMessage;
 pub use crate::message::Rpc;
 pub use crate::message::VoteRequest;
@@ -85,7 +83,6 @@ struct LeaderState<NodeId> {
 }
 
 pub struct RaftState<Log, Random, NodeId> {
-    group:   RaftGroupId,
     node_id: NodeId,
     peers:   BTreeSet<NodeId>,
     random:  Random,
@@ -136,8 +133,7 @@ where Log: RaftLog,
       NodeId: Ord + Clone + fmt::Display,
 {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(group:                   RaftGroupId,
-               node_id:                 NodeId,
+    pub fn new(node_id:                 NodeId,
                mut peers:               BTreeSet<NodeId>,
                log:                     Log,
                mut random:              Random,
@@ -148,7 +144,6 @@ where Log: RaftLog,
         peers.remove(&node_id);
         let random_election_ticks = random_election_timeout(&mut random, election_timeout_ticks);
         Self {
-            group,
             node_id,
             peers,
             random,
@@ -166,10 +161,6 @@ where Log: RaftLog,
             log,
             commit_idx:   Default::default(),
         }
-    }
-
-    pub fn group_id(&self) -> &RaftGroupId {
-        &self.group
     }
 
     pub fn node_id(&self) -> &NodeId {
@@ -309,9 +300,13 @@ where Log: RaftLog,
                 None
             }
             Candidate(_) => {
-                let vote_request = self.request_vote();
-                let from         = peer_node_id;
-                vote_request.map(|message| SendableRaftMessage::Reply { message, from })
+                if self.peers.contains(&peer_node_id) {
+                    let vote_request = self.request_vote();
+                    let from         = peer_node_id;
+                    vote_request.map(|message| SendableRaftMessage::Reply { message, from })
+                } else {
+                    None
+                }
             }
             Leader(leader_state) => {
                 if let Some(replication) = leader_state.followers.get_mut(&peer_node_id) {
@@ -396,7 +391,6 @@ where Log: RaftLog,
         match self.leadership {
             Candidate { .. } => {                                               // /\ state[i] = Candidate
                 let vote_request_msg = RaftMessage {                            // /\ Send([
-                    group: self.group.clone(),
                     term:  self.current_term,                                   //          mterm         |-> currentTerm[i],
                     rpc: Some(Rpc::VoteRequest(VoteRequest {                    //          mtype         |-> RequestVoteRequest,
                         last_log_term: self.log.last_term(),                    //          mlastLogTerm  |-> LastTerm(log[i]),
@@ -483,7 +477,6 @@ where Log: RaftLog,
                 last_entry = prev_log_idx;
             }
             let append_request_msg = RaftMessage {                              //    IN Send([
-                group: self.group.clone(),
                 term:  self.current_term,                                       //             mterm          |-> currentTerm[i],
                 rpc: Some(Rpc::AppendRequest(AppendRequest {                    //             mtype          |-> AppendEntriesRequest,
                     prev_log_idx,                                               //             mprevLogIndex  |-> prevLogIndex,
@@ -621,7 +614,6 @@ where Log: RaftLog,
         }
 
         let message = RaftMessage {                                // /\ Reply([
-            group: self.group.clone(),
             term:  self.current_term,                                           //           mterm        |-> currentTerm[i],
             rpc: Some(Rpc::VoteResponse(VoteResponse {                          //           mtype        |-> RequestVoteResponse,
                 vote_granted: grant,                                            //           mvoteGranted |-> grant,
@@ -710,7 +702,6 @@ where Log: RaftLog,
             }
 
             let message = RaftMessage {                            //                /\ Reply([
-                group: self.group.clone(),
                 term:  self.current_term,                                       //                          mterm           |-> currentTerm[i],
                 rpc: Some(Rpc::AppendResponse(AppendResponse {                  //                          mtype           |-> AppendEntriesResponse,
                     success:      false,                                        //                          msuccess        |-> FALSE,
@@ -764,7 +755,6 @@ where Log: RaftLog,
             }
 
             let message = RaftMessage {                                         // /\ Reply([
-                group: self.group.clone(),
                 term:  self.current_term,                                       //           mterm           |-> currentTerm[i],
                 rpc: Some(Rpc::AppendResponse(AppendResponse {                  //           mtype           |-> AppendEntriesResponse,
                     success:      true,                                         //           msuccess        |-> TRUE,
@@ -880,9 +870,8 @@ where Log: RaftLog,
                    msg:  RaftMessage,
                    from: NodeId)
                    -> Option<SendableRaftMessage<NodeId>> {                     // Receive(m) ==
-        if msg.group != self.group {
-            error!("received raft message from {} for wrong group {}",
-                   &from, &msg.group);
+        if !self.peers.contains(&from) {
+            error!("received raft message from {} for wrong group", &from);
             return None;
         }
                                                                                 // IN \* Any RPC with a newer term causes the recipient to advance
@@ -942,7 +931,7 @@ fn random_election_timeout(random: &mut impl RngCore, election_timeout_ticks: u3
 
 impl fmt::Display for RaftMessage {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { group: _, term, rpc } = self;
+        let Self { term, rpc } = self;
         let mut debug = fmt.debug_tuple("");
         debug.field(&format_args!("{}", term));
         if let Some(rpc) = rpc {
@@ -1076,24 +1065,5 @@ impl Sub<u64> for LogIdx {
     type Output = Self;
     fn sub(self, dec: u64) -> Self {
         Self { id: self.id.saturating_sub(dec) }
-    }
-}
-
-impl Eq for RaftGroupId {}
-
-#[allow(clippy::derive_hash_xor_eq)]
-impl Hash for RaftGroupId {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.id.hash(hasher)
-    }
-}
-
-impl fmt::Display for RaftGroupId {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { id } = self;
-        for byte in id {
-            write!(fmt, "{:02x}", byte)?;
-        }
-        Ok(())
     }
 }
