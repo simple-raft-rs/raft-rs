@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use bytes::Bytes;
 use crate::prelude::*;
 
 #[derive(Clone, PartialEq)]
@@ -92,7 +93,7 @@ pub struct LogEntry {
     #[cfg_attr(feature = "prost", prost(message, required, tag="1"))]
     pub term: TermId,
     #[cfg_attr(feature = "prost", prost(bytes="vec", required, tag="2"))]
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 #[derive(Clone, PartialEq)]

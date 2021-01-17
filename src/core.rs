@@ -17,6 +17,7 @@
  */
 
 use alloc::collections::{BTreeMap, BTreeSet};
+use bytes::Bytes;
 use core::cmp::Ordering;
 use core::fmt;
 use core::iter;
@@ -513,13 +514,13 @@ where Log: RaftLog,
                     heartbeat_ticks: 0,
                 });
                 // append a noop in the new term to commit entries from past terms (Raft Section 5.4.2)
-                let _ignore = self.client_request(vec![]);
+                let _ignore = self.client_request(Default::default());
             }
         }
     }
 
     // \* Leader i receives a client request to add v to the log.
-    pub fn client_request(&mut self, data: Vec<u8>) -> Result<(), ()> {         // ClientRequest(i, v) ==
+    pub fn client_request(&mut self, data: Bytes) -> Result<(), ()> {           // ClientRequest(i, v) ==
         let entry = LogEntry {
             term: self.current_term,                                            // /\ LET entry == [term  |-> currentTerm[i],
             data,                                                               //                  value |-> v]

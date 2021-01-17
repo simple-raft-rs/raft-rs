@@ -82,7 +82,7 @@ impl RaftLog for RaftLogMemory {
         }
     }
     fn entry_len(&self, log_entry: &LogEntry) -> usize {
-        log_entry.data.capacity()
+        log_entry.data.len()
     }
     fn get(&mut self, log_idx: LogIdx) -> Option<LogEntry> {
         let index = self.entry_index(log_idx)?;

@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use crate::prelude::*;
+use bytes::Bytes;
 use crate::message::{LogEntry, LogIdx, TermId};
 use super::RaftLog;
 
@@ -103,11 +103,11 @@ pub fn test_log_pop_front(log: &mut dyn RaftLog) {
 
 fn test_entries() -> [LogEntry; 5] {
     [
-        LogEntry { term: TermId { id: 1 }, data: vec![] },
-        LogEntry { term: TermId { id: 1 }, data: vec![2; 1] },
-        LogEntry { term: TermId { id: 2 }, data: vec![3; 2] },
-        LogEntry { term: TermId { id: 9 }, data: vec![4; 100] },
-        LogEntry { term: TermId { id: u64::max_value() }, data: vec![5; 100] },
+        LogEntry { term: TermId { id: 1 }, data: Bytes::from_static(&[]) },
+        LogEntry { term: TermId { id: 1 }, data: Bytes::from_static(&[2; 1]) },
+        LogEntry { term: TermId { id: 2 }, data: Bytes::from_static(&[3; 2]) },
+        LogEntry { term: TermId { id: 9 }, data: Bytes::from_static(&[4; 100]) },
+        LogEntry { term: TermId { id: u64::max_value() }, data: Bytes::from_static(&[5; 100]) },
     ]
 }
 
