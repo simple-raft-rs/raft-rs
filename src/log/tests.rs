@@ -16,85 +16,56 @@
  */
 
 use bytes::Bytes;
-use crate::message::{LogEntry, LogIdx, TermId};
+use crate::message::{LogEntry, LogIndex, TermId};
 use super::RaftLog;
 
-//
-// public API
-//
-
+/// Defines test functions for a type implementing RaftLog.
 #[macro_export]
 macro_rules! raft_log_tests {
     ($ty:ty, $new:expr) => {
         $crate::raft_log_test! { $ty, $new, test_log_empty }
         $crate::raft_log_test! { $ty, $new, test_log_append }
         $crate::raft_log_test! { $ty, $new, test_log_cancel_from }
-        $crate::raft_log_test! { $ty, $new, test_log_pop_front }
     };
 }
 
+/// Defines a given test function for a type implementing RaftLog.
 #[macro_export]
 macro_rules! raft_log_test {
     ($ty:ty, $new:expr, $test:ident) => {
         #[test]
         fn $test() {
             let mut log: $ty = $new;
-            let dyn_log: &mut dyn $crate::log::RaftLog = &mut log;
-            $crate::log::tests::$test(dyn_log);
+            $crate::log::tests::$test(&mut log);
         }
     }
 }
 
-pub fn test_log_empty(log: &mut dyn RaftLog) {
-    verify_log(log, &[], LogIdx::default(), LogIdx::default());
+pub fn test_log_empty<Log: RaftLog>(log: &mut Log) {
+    verify_log(log, &[], LogIndex::default(), LogIndex::default());
 }
 
-pub fn test_log_append(log: &mut dyn RaftLog) {
+pub fn test_log_append<Log: RaftLog>(log: &mut Log) {
     let entries = test_entries();
     for (index, entry) in entries.iter().cloned().enumerate() {
         log.append(entry).unwrap_or_else(|_| panic!());
-        verify_log(log, &entries, LogIdx::default(), LogIdx { id: 1 + index as u64 });
+        verify_log(log, &entries, LogIndex::default(), LogIndex { id: 1 + index as u64 });
     }
 
 }
 
-pub fn test_log_cancel_from(log: &mut dyn RaftLog) {
+pub fn test_log_cancel_from<Log: RaftLog>(log: &mut Log) {
     let entries = append_test_entries(log);
     for &truncate_len in &[1, 2, 1] {
-        let last_log_idx = log.last_idx();
-        assert_eq!(log.cancel_from(last_log_idx + 2), Err(()));
-        assert_eq!(log.cancel_from(last_log_idx + 1), Err(()));
-        verify_log(log, &entries, LogIdx::default(), last_log_idx);
-        assert_eq!(log.cancel_from(last_log_idx + 1 - truncate_len), Ok(truncate_len as usize));
-        verify_log(log, &entries, LogIdx::default(), last_log_idx - truncate_len);
+        let last_log_idx = log.last_index();
+        log.cancel_from(last_log_idx + 2).unwrap_err();
+        log.cancel_from(last_log_idx + 1).unwrap_err();
+        verify_log(log, &entries, LogIndex::default(), last_log_idx);
+        assert_eq!(log.cancel_from(last_log_idx + 1 - truncate_len).map_err(drop), Ok(truncate_len as usize));
+        verify_log(log, &entries, LogIndex::default(), last_log_idx - truncate_len);
     }
-    assert_eq!(log.cancel_from(log.last_idx() + 2), Err(()));
-    assert_eq!(log.cancel_from(log.last_idx() + 1), Err(()));
-}
-
-pub fn test_log_pop_front(log: &mut dyn RaftLog) {
-    let entries = append_test_entries(log);
-    let mut prev_log_idx = LogIdx::default();
-    let mut last_log_idx = log.last_idx();
-    assert_eq!(log.pop_front(prev_log_idx), Err(()));
-    verify_log(log, &entries, prev_log_idx, last_log_idx);
-
-    prev_log_idx = prev_log_idx + 1;
-    assert_eq!(log.pop_front(prev_log_idx), Ok(()));
-    verify_log(log, &entries, prev_log_idx, last_log_idx);
-
-    last_log_idx = last_log_idx - 1;
-    assert_eq!(log.cancel_from(last_log_idx + 1), Ok(1));
-    verify_log(log, &entries, prev_log_idx, last_log_idx);
-
-    for _ in prev_log_idx.id..last_log_idx.id {
-        prev_log_idx = prev_log_idx + 1;
-        assert_eq!(log.pop_front(last_log_idx), Ok(()));
-        verify_log(log, &entries, prev_log_idx, last_log_idx);
-    }
-
-    assert_eq!(log.pop_front(last_log_idx), Err(()));
-    verify_log(log, &entries, prev_log_idx, last_log_idx);
+    log.cancel_from(log.last_index() + 2).unwrap_err();
+    log.cancel_from(log.last_index() + 1).unwrap_err();
 }
 
 //
@@ -111,42 +82,42 @@ fn test_entries() -> [LogEntry; 5] {
     ]
 }
 
-fn append_test_entries(log: &mut dyn RaftLog) -> [LogEntry; 5] {
+fn append_test_entries<Log: RaftLog>(log: &mut Log) -> [LogEntry; 5] {
     let entries = test_entries();
     entries.iter().cloned().for_each(|entry| log.append(entry).unwrap_or_else(|_| panic!()));
     entries
 }
 
-fn verify_log(log: &mut dyn RaftLog, entries: &[LogEntry], prev_log_idx: LogIdx, last_log_idx: LogIdx) {
-    assert_eq!(log.prev_idx(), prev_log_idx);
+fn verify_log<Log: RaftLog>(log: &mut Log, entries: &[LogEntry], prev_log_idx: LogIndex, last_log_idx: LogIndex) {
+    assert_eq!(log.prev_index(), prev_log_idx);
 
-    assert_eq!(log.get(LogIdx::default()), None);
-    assert_eq!(log.get_len(LogIdx::default()), None);
+    assert_eq!(log.get(LogIndex::default()), None);
+    assert_eq!(log.get_len(LogIndex::default()), None);
 
     assert_eq!(log.get(prev_log_idx), None);
     assert_eq!(log.get_term(prev_log_idx), Some(prev_log_idx.id.checked_sub(1).map(|index| entries[index as usize].term).unwrap_or_default()));
     assert_eq!(log.get_len(prev_log_idx), None);
 
-    assert_eq!(log.last_idx(), last_log_idx);
-    assert_eq!(log.last_term(), log.last_idx().id.checked_sub(1).map(|index| entries[index as usize].term).unwrap_or_default());
+    assert_eq!(log.last_index(), last_log_idx);
+    assert_eq!(log.last_term(), log.last_index().id.checked_sub(1).map(|index| entries[index as usize].term).unwrap_or_default());
 
     verify_entries(entries, prev_log_idx, last_log_idx, |log_idx, entry| {
         assert_eq!(log.get(log_idx).as_ref(), entry);
         assert_eq!(log.get_term(log_idx), entry.map(|entry| entry.term));
-        assert_eq!(log.get_len(log_idx), entry.map(|entry| entry.data.len()));
+        assert_eq!(log.get_len(log_idx), entry.map(|entry| log.entry_len(&entry)));
     });
 }
 
-fn verify_entries<F>(entries: &[LogEntry], prev_log_idx: LogIdx, last_log_idx: LogIdx, mut fun: F)
-where F: FnMut(LogIdx, Option<&LogEntry>),
+fn verify_entries<F>(entries: &[LogEntry], prev_log_idx: LogIndex, last_log_idx: LogIndex, mut fun: F)
+where F: FnMut(LogIndex, Option<&LogEntry>),
 {
     for log_index in 0..prev_log_idx.id {
-        fun(LogIdx { id: log_index }, None);
+        fun(LogIndex { id: log_index }, None);
     }
     for entry_index in prev_log_idx.id..last_log_idx.id {
-        fun(LogIdx { id: 1 + entry_index }, Some(&entries[entry_index as usize]));
+        fun(LogIndex { id: 1 + entry_index }, Some(&entries[entry_index as usize]));
     }
     for entry_index in last_log_idx.id..=entries.len() as u64 {
-        fun(LogIdx { id: 1 + entry_index }, None);
+        fun(LogIndex { id: 1 + entry_index }, None);
     }
 }

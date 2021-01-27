@@ -31,8 +31,8 @@ message RaftMessage {
 }
 
 message VoteRequest {
-  required LogIdx last_log_idx  = 2;
-  required TermId last_log_term = 3;
+  required LogIndex last_log_idx  = 2;
+  required TermId   last_log_term = 3;
 }
 
 message VoteResponse {
@@ -40,16 +40,16 @@ message VoteResponse {
 }
 
 message AppendRequest {
-  required LogIdx   prev_log_idx  = 1;
+  required LogIndex prev_log_idx  = 1;
   required TermId   prev_log_term = 2;
-  required LogIdx   leader_commit = 3;
+  required LogIndex leader_commit = 3;
   repeated LogEntry entries       = 4;
 }
 
 message AppendResponse {
-  required bool   success      = 1;
-  required LogIdx match_idx    = 2;
-  required LogIdx last_log_idx = 3;
+  required bool     success      = 1;
+  required LogIndex match_idx    = 2;
+  required LogIndex last_log_idx = 3;
 }
 
 message LogEntry {
@@ -61,6 +61,6 @@ message TermId {
   required uint64 id = 1;
 }
 
-message LogIdx {
+message LogIndex {
   required uint64 id = 1;
 }

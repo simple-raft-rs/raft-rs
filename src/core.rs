@@ -16,40 +16,40 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+//! Unstable, low-level API for the complete state of a Raft node.
+
 use alloc::collections::{BTreeMap, BTreeSet};
 use bytes::Bytes;
-use core::cmp::Ordering;
 use core::fmt;
 use core::iter;
-use core::ops::{Add, AddAssign, Sub};
+use crate::message::*;
+use crate::node::{AppendError, RaftConfig};
 use crate::prelude::*;
-use crate::log::{RaftLog, RaftLogAppendError};
+use crate::log::{CommittedIter, RaftLog, RaftLogState};
 use log::{error, warn, info, debug};
 use rand_core::RngCore;
 use self::LeadershipState::*;
 
-pub use crate::message::AppendRequest;
-pub use crate::message::AppendResponse;
-pub use crate::message::LogEntry;
-pub use crate::message::LogIdx;
-pub use crate::message::TermId;
-pub use crate::message::RaftMessage;
-pub use crate::message::Rpc;
-pub use crate::message::VoteRequest;
-pub use crate::message::VoteResponse;
-
+/// The state of Raft log replication from a Raft node to one of its peers.
 pub struct ReplicationState {
     // \* The next entry to send to each follower.
     // VARIABLE nextIndex
-    pub next_idx: LogIdx,
+    /// The index of the next log entry to be sent to this peer.
+    pub next_idx: LogIndex,
 
     // \* The latest entry that each follower has acknowledged is the same as the
     // \* leader's. This is used to calculate commitIndex on the leader.
     // VARIABLE matchIndex
-    pub match_idx: LogIdx,
+    /// The index of the last log entry on this peer to up which the peer's log is known to match this node's log.
+    pub match_idx: LogIndex,
 
-    pub inflight:   Option<LogIdx>,
+    /// The index of the last log entry sent to this peer but which has not yet been acknowledged by the peer.
+    pub inflight: Option<LogIndex>,
+
+    /// Whether this node is currently probing to discover the correct [`match_idx`][Self::match_idx] for this peer.
     pub send_probe: bool,
+
+    /// Whether a heartbeat "ping" message is due to be sent to this peer.
     send_heartbeat: bool,
 }
 
@@ -83,16 +83,12 @@ struct LeaderState<NodeId> {
     heartbeat_ticks: u32,
 }
 
+/// The complete state of a Raft node.
 pub struct RaftState<Log, Random, NodeId> {
     node_id: NodeId,
     peers:   BTreeSet<NodeId>,
     random:  Random,
-
-    election_timeout_ticks:  u32,
-    heartbeat_timeout_ticks: u32,
-    replication_chunk_size:  usize,
-
-    last_applied: LogIdx,
+    config:  RaftConfig,
 
     // \* The server's term number.
     // VARIABLE currentTerm
@@ -111,47 +107,31 @@ pub struct RaftState<Log, Random, NodeId> {
     // \* log entry. Unfortunately, the Sequence module defines Head(s) as the entry
     // \* with index 1, so be careful not to use that!
     // VARIABLE log
-    log: Log,
-
     // \* The index of the latest entry in the log the state machine may apply.
     // VARIABLE commitIndex
-    commit_idx: LogIdx,
+    log: RaftLogState<Log>,
 }
 
-pub enum SendableRaftMessage<NodeId> {
-    Broadcast {
-        message: RaftMessage,
-    },
-    Reply {
-        message: RaftMessage,
-        from:    NodeId,
-    },
-}
-
+#[allow(missing_docs)]
 impl<Log, Random, NodeId> RaftState<Log, Random, NodeId>
 where Log: RaftLog,
       Random: RngCore,
       NodeId: Ord + Clone + fmt::Display,
 {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(node_id:                 NodeId,
-               mut peers:               BTreeSet<NodeId>,
-               log:                     Log,
-               mut random:              Random,
-               election_timeout_ticks:  u32,
-               heartbeat_timeout_ticks: u32,
-               replication_chunk_size:  usize)
+    pub fn new(node_id:    NodeId,
+               mut peers:  BTreeSet<NodeId>,
+               log:        Log,
+               mut random: Random,
+               config:     RaftConfig)
                -> Self {
         peers.remove(&node_id);
-        let random_election_ticks = random_election_timeout(&mut random, election_timeout_ticks);
+        let random_election_ticks = random_election_timeout(&mut random, config.election_timeout_ticks);
         Self {
             node_id,
             peers,
             random,
-            election_timeout_ticks,
-            heartbeat_timeout_ticks,
-            replication_chunk_size,
-            last_applied: Default::default(),
+            config,
+            log:          RaftLogState::new(log),
             current_term: Default::default(),
             voted_for:    Default::default(),
             leadership:   Follower(FollowerState {
@@ -159,40 +139,44 @@ where Log: RaftLog,
                 election_ticks: random_election_ticks,
                 random_election_ticks,
             }),
-            log,
-            commit_idx:   Default::default(),
         }
+    }
+
+    pub fn commit_idx(&self) -> &LogIndex {
+        &self.log.commit_idx
+    }
+
+    pub fn config(&self) -> &RaftConfig {
+        &self.config
+    }
+
+    pub fn is_leader(&self) -> bool {
+        if let Leader(_) = &self.leadership {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn leader(&self) -> (Option<&NodeId>, &TermId) {
+        let leader = match &self.leadership {
+            Follower(follower_state) => follower_state.leader.as_ref(),
+            Candidate(_)             => None,
+            Leader(_)                => Some(&self.node_id),
+        };
+        (leader, &self.current_term)
+    }
+
+    pub fn log(&self) -> &Log {
+        self.log.log()
+    }
+
+    pub fn log_mut(&mut self) -> &mut Log {
+        self.log.log_mut()
     }
 
     pub fn node_id(&self) -> &NodeId {
         &self.node_id
-    }
-
-    pub fn take_committed_transaction(&mut self) -> Option<LogEntry> {
-        if self.last_applied < self.commit_idx {
-            let log_idx       = self.last_applied + 1;
-            let log_entry     = self.log.get(log_idx)?;
-            self.last_applied = log_idx;
-            Some(log_entry)
-        } else {
-            None
-        }
-    }
-
-    pub fn last_applied(&self) -> &LogIdx {
-        &self.last_applied
-    }
-
-    pub fn commit_idx(&self) -> &LogIdx {
-        &self.commit_idx
-    }
-
-    pub fn log(&self) -> &Log {
-        &self.log
-    }
-
-    pub fn log_mut(&mut self) -> &mut Log {
-        &mut self.log
     }
 
     pub fn peers(&self) -> &BTreeSet<NodeId> {
@@ -207,59 +191,33 @@ where Log: RaftLog,
         }
     }
 
-    pub fn leader(&self) -> (Option<&NodeId>, &TermId) {
-        let leader = match &self.leadership {
-            Follower(follower_state) => follower_state.leader.as_ref(),
-            Candidate(_)             => None,
-            Leader(_)                => Some(&self.node_id),
-        };
-        (leader, &self.current_term)
-    }
-
-    pub fn is_leader(&self) -> bool {
-        if let Leader(_) = &self.leadership {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn set_election_timeout_ticks(&mut self, election_timeout_ticks: u32) {
-        self.election_timeout_ticks = election_timeout_ticks;
+    pub fn set_config(&mut self, config: RaftConfig) {
+        self.config = config;
 
         match &mut self.leadership {
             Follower(FollowerState { election_ticks, random_election_ticks, .. }) => {
-                if *random_election_ticks > election_timeout_ticks.saturating_mul(2) {
-                    *random_election_ticks = random_election_timeout(&mut self.random, election_timeout_ticks);
+                if *random_election_ticks > self.config.election_timeout_ticks.saturating_mul(2) {
+                    *random_election_ticks = random_election_timeout(&mut self.random, self.config.election_timeout_ticks);
                 }
                 if election_ticks > random_election_ticks {
                     *election_ticks = *random_election_ticks;
                 }
             }
             Candidate(CandidateState { election_ticks, .. }) => {
-                if *election_ticks > election_timeout_ticks.saturating_mul(2) {
-                    *election_ticks = random_election_timeout(&mut self.random, election_timeout_ticks);
+                if *election_ticks > self.config.election_timeout_ticks.saturating_mul(2) {
+                    *election_ticks = random_election_timeout(&mut self.random, self.config.election_timeout_ticks);
                 }
             }
-            Leader(_) => (),
-        }
-    }
-
-    pub fn set_heartbeat_timeout_ticks(&mut self, heartbeat_timeout_ticks: u32) {
-        self.heartbeat_timeout_ticks = heartbeat_timeout_ticks;
-
-        match &mut self.leadership {
             Leader(LeaderState { heartbeat_ticks, .. }) => {
-                if *heartbeat_ticks > heartbeat_timeout_ticks {
-                    *heartbeat_ticks = heartbeat_timeout_ticks;
+                if *heartbeat_ticks > self.config.heartbeat_interval_ticks {
+                    *heartbeat_ticks = self.config.heartbeat_interval_ticks;
                 }
             }
-            Follower(_) | Candidate(_) => (),
         }
     }
 
-    pub fn set_replication_chunk_size(&mut self, replication_chunk_size: usize) {
-        self.replication_chunk_size = replication_chunk_size;
+    pub fn take_committed(&mut self) -> CommittedIter<'_, Log> {
+        self.log.take_committed()
     }
 
     pub fn timer_tick(&mut self) -> Option<SendableRaftMessage<NodeId>> {
@@ -280,7 +238,7 @@ where Log: RaftLog,
             Leader(leader_state) => {
                 match leader_state.heartbeat_ticks.saturating_sub(1) {
                     0 => {
-                        leader_state.heartbeat_ticks = self.heartbeat_timeout_ticks;
+                        leader_state.heartbeat_ticks = self.config.heartbeat_interval_ticks;
                         debug!("sending heartbeat");
                         for replication in leader_state.followers.values_mut() {
                             replication.send_heartbeat = true;
@@ -304,7 +262,7 @@ where Log: RaftLog,
                 if self.peers.contains(&peer_node_id) {
                     let vote_request = self.request_vote();
                     let from         = peer_node_id;
-                    vote_request.map(|message| SendableRaftMessage::Reply { message, from })
+                    vote_request.map(|message| SendableRaftMessage { message, dest: RaftMessageDestination::To(from) })
                 } else {
                     None
                 }
@@ -312,7 +270,7 @@ where Log: RaftLog,
             Leader(leader_state) => {
                 if let Some(replication) = leader_state.followers.get_mut(&peer_node_id) {
                     info!("resetting follower state {}", &peer_node_id);
-                    replication.next_idx       = self.log.last_idx() + 1;
+                    replication.next_idx       = self.log.last_index() + 1;
                     replication.send_probe     = true;
                     replication.send_heartbeat = true;
                     replication.inflight       = None;
@@ -320,35 +278,6 @@ where Log: RaftLog,
                 None
             }
         }
-    }
-
-    fn log_append(&mut self, mut entry: LogEntry) -> Result<(), ()> {
-        while let Err(append_error) = self.log.append(entry) {
-            match append_error {
-                RaftLogAppendError::OutOfSpace { log_entry } => {
-                    match self.log.pop_front(self.last_applied) {
-                        Ok(()) => {
-                            entry = log_entry;
-                        }
-                        Err(()) => {
-                            error!("truncated entire raft log and still didn't have {} bytes for log index {}!",
-                                   log_entry.data.len(), self.log.last_idx() + 1);
-                            return Err(());
-                        }
-                    }
-                }
-                RaftLogAppendError::TooLarge { size } => {
-                    error!("transaction of {} bytes at raft log index {} is too large!",
-                           size, self.log.last_idx() + 1);
-                    return Err(());
-                }
-                RaftLogAppendError::InternalError => {
-                    error!("error writing raft log index {}", self.log.last_idx() + 1);
-                    return Err(());
-                }
-            }
-        }
-        Ok(())
     }
 
     //
@@ -379,7 +308,10 @@ where Log: RaftLog,
                 info!("became candidate at {}", self.current_term);
                 self.become_leader();
                 self.advance_commit_idx();
-                self.request_vote().map(|message| SendableRaftMessage::Broadcast { message })
+                self.request_vote().map(|message| SendableRaftMessage {
+                    message,
+                    dest: RaftMessageDestination::Broadcast,
+                })
             }
             Leader(_) => {
                 None
@@ -395,7 +327,7 @@ where Log: RaftLog,
                     term:  self.current_term,                                   //          mterm         |-> currentTerm[i],
                     rpc: Some(Rpc::VoteRequest(VoteRequest {                    //          mtype         |-> RequestVoteRequest,
                         last_log_term: self.log.last_term(),                    //          mlastLogTerm  |-> LastTerm(log[i]),
-                        last_log_idx: self.log.last_idx(),                      //          mlastLogIndex |-> Len(log[i]),
+                        last_log_idx: self.log.last_index(),                    //          mlastLogIndex |-> Len(log[i]),
                     })),
                 };
                 Some(vote_request_msg)
@@ -416,7 +348,7 @@ where Log: RaftLog,
                     Some(replication) => replication,
                     None                    => return None,
                 };
-            let last_log_idx = self.log.last_idx();
+            let last_log_idx = self.log.last_index();
             let next_idx     = replication.next_idx;
             let send_entries = (last_log_idx >= next_idx &&
                                 !replication.send_probe);
@@ -443,10 +375,10 @@ where Log: RaftLog,
             };
 
             let mut entries: Vec<LogEntry> = Vec::new();
-            let last_entry:  LogIdx;
+            let last_entry:  LogIndex;
             if send_entries {                                                   //        \* Send up to 1 entry, constrained by the end of the log.
                 let mut entries_size = 0usize;
-                let max_entries_size = self.replication_chunk_size;
+                let max_entries_size = self.config.replication_chunk_size;
                 let entry_log_idxs   = (0..).map(|idx| next_idx + idx)
                                             .take_while(|log_idx| *log_idx <= last_log_idx);
                 for entry_log_idx in entry_log_idxs {                           //        entries == SubSeq(log[i], nextIndex[i][j], lastEntry)
@@ -483,14 +415,14 @@ where Log: RaftLog,
                     prev_log_idx,                                               //             mprevLogIndex  |-> prevLogIndex,
                     prev_log_term,                                              //             mprevLogTerm   |-> prevLogTerm,
                     entries,                                                    //             mentries       |-> entries,
-                    leader_commit: self.commit_idx.min(last_entry),             //             mcommitIndex   |-> Min({commitIndex[i], lastEntry}),
+                    leader_commit: self.log.commit_idx.min(last_entry),         //             mcommitIndex   |-> Min({commitIndex[i], lastEntry}),
                 })),
             };
             replication.send_heartbeat = false;
             replication.inflight       = Some(last_entry);
-            Some(SendableRaftMessage::Reply {
+            Some(SendableRaftMessage {
                 message: append_request_msg,
-                from:    to_node_id,
+                dest:    RaftMessageDestination::To(to_node_id),
             })
         } else {
             None
@@ -505,7 +437,7 @@ where Log: RaftLog,
                 self.leadership = Leader(LeaderState {                          // /\ state'      = [state EXCEPT ![i] = Leader]
                     followers: (self.peers.iter().cloned())
                         .map(|id| (id, ReplicationState {
-                            next_idx:       self.log.last_idx() + 1,            // /\ nextIndex'  = [nextIndex EXCEPT ![i] = [j \in Server |-> Len(log[i]) + 1]]
+                            next_idx:       self.log.last_index() + 1,          // /\ nextIndex'  = [nextIndex EXCEPT ![i] = [j \in Server |-> Len(log[i]) + 1]]
                             match_idx:      Default::default(),                 // /\ matchIndex' = [matchIndex EXCEPT ![i] = [j \in Server |-> 0]]
                             inflight:       Default::default(),
                             send_probe:     Default::default(),
@@ -520,17 +452,20 @@ where Log: RaftLog,
     }
 
     // \* Leader i receives a client request to add v to the log.
-    pub fn client_request(&mut self, data: Bytes) -> Result<(), ()> {           // ClientRequest(i, v) ==
+    pub fn client_request(
+        &mut self,
+        data: Bytes,
+    ) -> Result<(), AppendError<Log::Error>> {                                  // ClientRequest(i, v) ==
         let entry = LogEntry {
             term: self.current_term,                                            // /\ LET entry == [term  |-> currentTerm[i],
             data,                                                               //                  value |-> v]
         };
         if let Leader(_) = &self.leadership {                                   // /\ state[i] = Leader
-            self.log_append(entry)?;                                            //        newLog == Append(log[i], entry)
+            self.log.append(entry).map_err(AppendError::RaftLogErr)?;           //        newLog == Append(log[i], entry)
             self.advance_commit_idx();
             Ok(())                                                              //    IN  log' = [log EXCEPT ![i] = newLog]
         } else {
-            Err(())
+            Err(AppendError::Cancelled { data: entry.data })
         }
     }
 
@@ -543,7 +478,7 @@ where Log: RaftLog,
             let mut match_idxs: Vec<_> =                                        // /\ LET \* The set of servers that agree up through index.
                 (leader_state.followers.values())
                 .map(|follower| follower.match_idx)
-                .chain(iter::once(self.log.last_idx()))
+                .chain(iter::once(self.log.last_index()))
                 .collect();
             match_idxs.sort_unstable();                                         //        Agree(index) == {i} \cup {k \in Server : matchIndex[i][k] >= index}
             let agree_idxs = (match_idxs.into_iter())                           //        \* The maximum indexes for which a quorum agrees
@@ -551,18 +486,18 @@ where Log: RaftLog,
             let commit_idx = match agree_idxs.max() {                           //        \* New value for commitIndex'[i]
                 Some(agree_idx) => {                                            //        newCommitIndex == IF /\ agreeIndexes /= {}
                     if self.log.get_term(agree_idx) == Some(self.current_term) {//                             /\ log[i][Max(agreeIndexes)].term = currentTerm[i]
-                        self.commit_idx.max(agree_idx)                          //                          THEN Max(agreeIndexes)
+                        self.log.commit_idx.max(agree_idx)                      //                          THEN Max(agreeIndexes)
                     } else {
-                        self.commit_idx                                         //                          ELSE commitIndex[i]
+                        self.log.commit_idx                                     //                          ELSE commitIndex[i]
                     }
                 }
-                None => self.commit_idx,
+                None => self.log.commit_idx,
             };
-            if commit_idx != self.commit_idx {
+            if commit_idx != self.log.commit_idx {
                 debug!("committed transactions from {} to {}",
-                       &self.commit_idx, &commit_idx);
+                       &self.log.commit_idx, &commit_idx);
             }
-            self.commit_idx = commit_idx;                                       //    IN commitIndex' = [commitIndex EXCEPT ![i] = newCommitIndex]
+            self.log.commit_idx = commit_idx;                                   //    IN commitIndex' = [commitIndex EXCEPT ![i] = newCommitIndex]
         }
     }
 
@@ -578,7 +513,7 @@ where Log: RaftLog,
                            msg:      VoteRequest,
                            from:     NodeId)
                            -> Option<SendableRaftMessage<NodeId>> {             // HandleRequestVoteRequest(i, j, m) ==
-        let last_log_idx  = self.log.last_idx();
+        let last_log_idx  = self.log.last_index();
         let last_log_term = self.log.last_term();
         let log_ok =                                                            // LET logOk ==
             (msg.last_log_term >  last_log_term) ||                             //     \/ m.mlastLogTerm > LastTerm(log[i])
@@ -620,7 +555,7 @@ where Log: RaftLog,
                 vote_granted: grant,                                            //           mvoteGranted |-> grant,
             })),
         };
-        Some(SendableRaftMessage::Reply { message, from })
+        Some(SendableRaftMessage { message, dest: RaftMessageDestination::To(from) })
     }
 
     // \* Server i receives a RequestVote response from server j with
@@ -699,18 +634,18 @@ where Log: RaftLog,
                       &from, &prev_log_idx, msg_prev_log_term, &our_prev_log_term);
             } else {
                 info!("rejected append from {} with {}, we are behind at {}",
-                      &from, &prev_log_idx, self.log.last_idx());
+                      &from, &prev_log_idx, self.log.last_index());
             }
 
-            let message = RaftMessage {                            //                /\ Reply([
+            let message = RaftMessage {                                         //                /\ Reply([
                 term:  self.current_term,                                       //                          mterm           |-> currentTerm[i],
                 rpc: Some(Rpc::AppendResponse(AppendResponse {                  //                          mtype           |-> AppendEntriesResponse,
                     success:      false,                                        //                          msuccess        |-> FALSE,
-                    match_idx:    self.log.prev_idx(),                          //                          mmatchIndex     |-> 0,
-                    last_log_idx: self.log.last_idx(),
+                    match_idx:    self.log.prev_index(),                        //                          mmatchIndex     |-> 0,
+                    last_log_idx: self.log.last_index(),
                 })),
             };
-            Some(SendableRaftMessage::Reply { message, from })
+            Some(SendableRaftMessage { message, dest: RaftMessageDestination::To(from) })
         } else {                                                                //       \/ \* accept request
             assert!(msg_term == self.current_term);                             //          /\ m.mterm = currentTerm[i]
             assert_match!(Follower(_) = &self.leadership);                      //          /\ state[i] = Follower
@@ -721,23 +656,23 @@ where Log: RaftLog,
             let msg_entries_iter       = (1..).map(|idx| prev_log_idx + idx).zip(msg.entries);
             let mut last_processed_idx = prev_log_idx;
             for (msg_entry_log_idx, msg_entry) in msg_entries_iter {
-                if msg_entry_log_idx == self.log.last_idx() + 1 {
-                    match self.log_append(msg_entry) {
-                        Ok(())  => (),
-                        Err(()) => break,
+                if msg_entry_log_idx == self.log.last_index() + 1 {
+                    match self.log.append(msg_entry) {
+                        Ok(()) => (),
+                        Err(_) => break,
                     }
                 } else if let Some(our_entry_log_term) = self.log.get_term(msg_entry_log_idx) {
                     if our_entry_log_term != msg_entry.term {
-                        assert!(msg_entry_log_idx > self.commit_idx);
+                        assert!(msg_entry_log_idx > self.log.commit_idx);
                         match self.log.cancel_from(msg_entry_log_idx) {
                             Ok(cancelled_len) =>
                                 info!("cancelled {} transactions from {}", cancelled_len, &msg_entry_log_idx),
-                            Err(()) =>
+                            Err(_) =>
                                 break,
                         }
-                        match self.log_append(msg_entry) {
-                            Ok(())  => (),
-                            Err(()) => break,
+                        match self.log.append(msg_entry) {
+                            Ok(()) => (),
+                            Err(_) => break,
                         }
                     }
                 } else {
@@ -749,21 +684,21 @@ where Log: RaftLog,
 
             // update commit index from leader
             let leader_commit = msg.leader_commit.min(last_processed_idx);
-            if leader_commit > self.commit_idx {
-                debug!("committed transactions from {} to {}", &self.commit_idx, &leader_commit);
+            if leader_commit > self.log.commit_idx {
+                debug!("committed transactions from {} to {}", &self.log.commit_idx, &leader_commit);
 
-                self.commit_idx = leader_commit;                                // /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
+                self.log.commit_idx = leader_commit;                            // /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
             }
 
             let message = RaftMessage {                                         // /\ Reply([
                 term:  self.current_term,                                       //           mterm           |-> currentTerm[i],
                 rpc: Some(Rpc::AppendResponse(AppendResponse {                  //           mtype           |-> AppendEntriesResponse,
                     success:      true,                                         //           msuccess        |-> TRUE,
-                    match_idx:    msg_last_log_idx.min(self.log.last_idx()),    //           mmatchIndex     |-> m.mprevLogIndex + Len(m.mentries),
-                    last_log_idx: self.log.last_idx(),
+                    match_idx:    msg_last_log_idx.min(self.log.last_index()),  //        mmatchIndex     |-> m.mprevLogIndex + Len(m.mentries),
+                    last_log_idx: self.log.last_index(),
                 })),
             };
-            Some(SendableRaftMessage::Reply { message, from })
+            Some(SendableRaftMessage { message, dest: RaftMessageDestination::To(from) })
         }
     }
 
@@ -802,7 +737,7 @@ where Log: RaftLog,
                     replication.send_probe = true;
                     replication.inflight   = None;
 
-                    let mut chunk_size_remaining = self.replication_chunk_size;
+                    let mut chunk_size_remaining = self.config.replication_chunk_size;
                     while let Some(next_idx) = replication.next_idx.checked_sub(1) {
                         if next_idx <= msg.match_idx {
                             break;
@@ -913,10 +848,14 @@ where Log: RaftLog,
     }
 
     fn random_election_timeout(&mut self) -> u32 {
-        random_election_timeout(&mut self.random, self.election_timeout_ticks)
+        random_election_timeout(&mut self.random, self.config.election_timeout_ticks)
     }
 }
 
+/// Computes the minimum size of a quorum of nodes in a Raft group.
+///
+/// Returns the minimum number of nodes out of a Raft group with total `peer_count` nodes necessary to constitute a
+/// quorum. A quorum of reachable nodes is needed to elect a leader and append to the distributed log.
 pub fn quorum_size(peer_count: usize) -> usize {
     (peer_count.saturating_add(1)) / 2 + 1
 }
@@ -924,147 +863,4 @@ pub fn quorum_size(peer_count: usize) -> usize {
 fn random_election_timeout(random: &mut impl RngCore, election_timeout_ticks: u32) -> u32 {
     let random = random.next_u32().checked_rem(election_timeout_ticks).unwrap_or(0);
     election_timeout_ticks.saturating_add(random)
-}
-
-//
-// RaftMessage impls
-//
-
-impl fmt::Display for RaftMessage {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { term, rpc } = self;
-        let mut debug = fmt.debug_tuple("");
-        debug.field(&format_args!("{}", term));
-        if let Some(rpc) = rpc {
-            debug.field(&format_args!("{}", rpc));
-        } else {
-            debug.field(&"None");
-        }
-        debug.finish()
-    }
-}
-
-impl fmt::Display for Rpc {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            Rpc::VoteRequest(msg)    => fmt::Display::fmt(msg, fmt),
-            Rpc::VoteResponse(msg)   => fmt::Display::fmt(msg, fmt),
-            Rpc::AppendRequest(msg)  => fmt::Display::fmt(msg, fmt),
-            Rpc::AppendResponse(msg) => fmt::Display::fmt(msg, fmt),
-        }
-    }
-}
-
-impl fmt::Display for VoteRequest {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { last_log_idx, last_log_term } = self;
-        fmt.debug_struct("VoteRequest")
-           .field("last_log_idx",  &format_args!("{}", last_log_idx))
-           .field("last_log_term", &format_args!("{}", last_log_term))
-           .finish()
-    }
-}
-
-impl fmt::Display for VoteResponse {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { vote_granted } = self;
-        fmt.debug_struct("VoteResponse")
-           .field("vote_granted", vote_granted)
-           .finish()
-    }
-}
-
-impl fmt::Display for AppendRequest {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { prev_log_idx, prev_log_term, leader_commit, entries } = self;
-        fmt.debug_struct("AppendRequest")
-           .field("prev_log_idx",  &format_args!("{}", prev_log_idx))
-           .field("prev_log_term", &format_args!("{}", prev_log_term))
-           .field("leader_commit", &format_args!("{}", leader_commit))
-           .field("entries",       &entries.len())
-           .finish()
-    }
-}
-
-impl fmt::Display for AppendResponse {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { success, match_idx, last_log_idx } = self;
-        fmt.debug_struct("AppendResponse")
-           .field("success",      &success)
-           .field("match_idx",    &format_args!("{}", match_idx))
-           .field("last_log_idx", &format_args!("{}", last_log_idx))
-           .finish()
-    }
-}
-
-
-//
-// TermId impls
-//
-
-impl fmt::Display for TermId {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { id } = self;
-        fmt.debug_tuple("TermId")
-           .field(id)
-           .finish()
-    }
-}
-
-impl Copy for TermId {}
-impl Eq for TermId {}
-impl PartialOrd for TermId {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
-}
-impl Ord for TermId {
-    fn cmp(&self, other: &Self) -> Ordering { self.id.cmp(&other.id) }
-}
-impl AddAssign<u64> for TermId {
-    fn add_assign(&mut self, rhs: u64)  {
-        self.id = self.id.checked_add(rhs).unwrap_or_else(|| panic!("overflow"));
-    }
-}
-
-//
-// LogIdx impls
-//
-
-impl LogIdx {
-    fn checked_sub(self, dec: u64) -> Option<Self> {
-        if let Some(id) = self.id.checked_sub(dec) {
-            Some(Self { id })
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Display for LogIdx {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { id } = self;
-        fmt.debug_tuple("LogIdx")
-           .field(id)
-           .finish()
-    }
-}
-
-impl Copy for LogIdx {}
-impl Eq for LogIdx {}
-impl PartialOrd for LogIdx {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
-}
-impl Ord for LogIdx {
-    fn cmp(&self, other: &Self) -> Ordering { self.id.cmp(&other.id) }
-}
-impl Add<u64> for LogIdx {
-    type Output = Self;
-    fn add(self, inc: u64) -> Self {
-        Self { id: self.id.checked_add(inc).unwrap_or_else(|| panic!("overflow")) }
-    }
-}
-impl Sub<u64> for LogIdx {
-    type Output = Self;
-    fn sub(self, dec: u64) -> Self {
-        Self { id: self.id.saturating_sub(dec) }
-    }
 }

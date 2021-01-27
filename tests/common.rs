@@ -15,16 +15,20 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use raft::core::{RaftMessage, RaftState, Rpc, SendableRaftMessage, TermId};
+use raft::core::RaftState;
 use raft::log::mem::RaftLogMemory;
+use raft::message::{RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
+use raft::node::RaftConfig;
 use rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
 
-pub const ELECTION_TIMEOUT_TICKS: u32 = 10;
-pub const HEARTBEAT_TIMEOUT_TICKS: u32 = 9;
-pub const REPLICATION_CHUNK_SIZE: usize = 1024;
+pub const CONFIG: RaftConfig = RaftConfig {
+    election_timeout_ticks: 10,
+    heartbeat_interval_ticks: 9,
+    replication_chunk_size: 1024,
+};
 const RANDOM_SEED: u64 = 0;
 const MAX_TICKS: u32 = 100_000;
 
@@ -61,11 +65,9 @@ pub fn raft(node_id: u64, peers: Vec<u64>, log: Option<RaftLogMemory>, random: &
     RaftState::new(
         NodeId(node_id),
         peers.into_iter().map(NodeId).collect(),
-        log.unwrap_or_else(|| RaftLogMemory::new(0, usize::max_value())),
+        log.unwrap_or_else(|| RaftLogMemory::new_unbounded()),
         ChaChaRng::seed_from_u64(random.next_u64()),
-        ELECTION_TIMEOUT_TICKS,
-        HEARTBEAT_TIMEOUT_TICKS,
-        REPLICATION_CHUNK_SIZE,
+        CONFIG,
     )
 }
 
@@ -78,13 +80,6 @@ pub fn send(raft: &mut TestRaft, from: u64, term: TermId, rpc: Rpc) -> Option<Se
         term,
         rpc: Some(rpc),
     }, NodeId(from))
-}
-
-pub fn assert_recv(message: Option<SendableRaftMessage<NodeId>>) -> RaftMessage {
-    match message.expect("expected raft message") {
-        SendableRaftMessage::Broadcast { message } => message,
-        SendableRaftMessage::Reply { message, .. } => message,
-    }
 }
 
 pub fn append_entries<'a>(node: &'a mut TestRaft, peers: impl IntoIterator<Item = NodeId> + 'a) -> impl Iterator<Item = SendableRaftMessage<NodeId>> + 'a {
@@ -124,16 +119,16 @@ pub fn run_group<'a>(
         }
 
         while let Some((from, sendable)) = messages.pop_front() {
-            let (message, reply_to_node_id, to_node_count) = match sendable {
-                SendableRaftMessage::Broadcast { message } => (message, None, nodes.len().saturating_sub(1)),
-                SendableRaftMessage::Reply { message, from } => (message, Some(from), 1),
+            let (reply_to_node_id, to_node_count) = match sendable.dest {
+                RaftMessageDestination::Broadcast => (None, nodes.len().saturating_sub(1)),
+                RaftMessageDestination::To(to) => (Some(to), 1),
             };
             let to_nodes = nodes.iter_mut().filter(|node| match &reply_to_node_id {
                 Some(to_node_id) => node.node_id() == to_node_id,
                 None => node.node_id() != &from,
             });
 
-            for (to_node, message) in Iterator::zip(to_nodes, itertools::repeat_n(message, to_node_count)) {
+            for (to_node, message) in Iterator::zip(to_nodes, itertools::repeat_n(sendable.message, to_node_count)) {
                 let to_node_id = *to_node.node_id();
                 TestLogger::set_node_id(Some(to_node_id));
                 if !config.should_drop(from, to_node_id) {

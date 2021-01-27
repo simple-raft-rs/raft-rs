@@ -18,7 +18,7 @@
 mod common;
 
 use common::*;
-use raft::core::{RaftMessage, Rpc, VoteResponse};
+use raft::message::{RaftMessage, Rpc, VoteResponse};
 
 #[test]
 pub fn test_empty_group_become_leader() {
@@ -34,7 +34,7 @@ pub fn test_node_one_peer_become_leader() {
     let mut raft = raft(1, vec![2], None, &mut init_random());
     assert!(!raft.is_leader());
 
-    let RaftMessage { term, .. } = assert_recv(raft.timeout());
+    let RaftMessage { term, .. } = raft.timeout().unwrap().message;
     assert!(!raft.is_leader());
 
     send(&mut raft, 2, term, Rpc::VoteResponse(VoteResponse { vote_granted: true }));
@@ -46,7 +46,7 @@ pub fn test_node_become_leader() {
     let mut raft = raft(1, vec![2, 3], None, &mut init_random());
     assert!(!raft.is_leader());
 
-    let RaftMessage { term, .. } = assert_recv(raft.timeout());
+    let RaftMessage { term, .. } = raft.timeout().unwrap().message;
     assert!(!raft.is_leader());
 
     send(&mut raft, 2, term, Rpc::VoteResponse(VoteResponse { vote_granted: false }));
@@ -59,7 +59,7 @@ pub fn test_node_become_leader() {
 #[test]
 pub fn test_node_vote_old_term() {
     let mut raft = raft(1, vec![2, 3], None, &mut init_random());
-    let RaftMessage { term, .. } = assert_recv(raft.timeout());
+    let RaftMessage { term, .. } = raft.timeout().unwrap().message;
     raft.timeout();
 
     send(&mut raft, 2, term, Rpc::VoteResponse(VoteResponse { vote_granted: true }));
@@ -69,7 +69,7 @@ pub fn test_node_vote_old_term() {
 #[test]
 pub fn test_node_vote_twice() {
     let mut raft = raft(1, vec![2, 3, 4, 5], None, &mut init_random());
-    let RaftMessage { term, .. } = assert_recv(raft.timeout());
+    let RaftMessage { term, .. } = raft.timeout().unwrap().message;
 
     send(&mut raft, 2, term, Rpc::VoteResponse(VoteResponse { vote_granted: true }));
     send(&mut raft, 2, term, Rpc::VoteResponse(VoteResponse { vote_granted: true }));
@@ -160,14 +160,14 @@ pub fn test_5_nodes_failed_timeout() {
 pub fn test_election_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config())
         .run_until(|group| group.has_leader())
-        .run_for_inspect(10 * ELECTION_TIMEOUT_TICKS, |group| assert!(group.has_leader()));
+        .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.has_leader()));
 }
 
 #[test]
 pub fn test_degraded() {
     TestRaftGroup::new(3, &mut init_random(), config().isolate(0))
         .run_until(|group| group.has_leader())
-        .run_for_inspect(10 * ELECTION_TIMEOUT_TICKS, |group| assert!(group.has_leader()));
+        .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.has_leader()));
 }
 
 #[test]
@@ -183,7 +183,7 @@ pub fn test_split_unstable() {
 pub fn test_split_stable() {
     TestRaftGroup::new(3, &mut init_random(), config().drop_between(1, 2))
         .run_on_node(0, |raft| raft.timeout())
-        .run_for_inspect(10 * ELECTION_TIMEOUT_TICKS, |group| assert!(group.nodes[0].is_leader()));
+        .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.nodes[0].is_leader()));
 }
 
 #[test]
@@ -194,5 +194,5 @@ pub fn test_split_rejoin() {
         .run_until(|group| !group.has_leader())
         .modify(|group| group.config = config())
         .run_until(|group| group.has_leader())
-        .run_for_inspect(10 * ELECTION_TIMEOUT_TICKS, |group| assert!(group.has_leader()));
+        .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.has_leader()));
 }
