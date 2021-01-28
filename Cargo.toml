@@ -14,3 +14,7 @@ rand_core = { version = "0.6", default-features = false, features = [] }
 [dev-dependencies]
 itertools   = "0.10"
 rand_chacha = "0.3"
+
+[[example]]
+name = "simple"
+test = true
