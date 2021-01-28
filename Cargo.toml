@@ -18,3 +18,7 @@ rand_chacha = "0.3"
 [[example]]
 name = "simple"
 test = true
+
+[[example]]
+name = "threaded"
+test = true
