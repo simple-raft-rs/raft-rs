@@ -5,6 +5,9 @@ version = "0.1.0"
 license = "AGPL-3.0-or-later"
 edition = "2018"
 
+[features]
+default = ["prost"]
+
 [dependencies]
 bytes     = { version = "1.0", default-features = false, features = [] }
 log       = "0.4"
