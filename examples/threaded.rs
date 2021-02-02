@@ -14,6 +14,11 @@ use std::time::{Duration, Instant};
 type NodeId = usize;
 
 const TICK_DURATION: Duration = Duration::from_millis(100);
+const RAFT_CONFIG: RaftConfig = RaftConfig {
+    election_timeout_ticks: 10,
+    heartbeat_interval_ticks: 1,
+    replication_chunk_size: usize::max_value(),
+};
 
 #[derive(Clone)]
 struct IncomingMessage {
@@ -36,11 +41,7 @@ fn main() {
             (0..5).collect(),
             RaftLogMemory::new_unbounded(),
             ChaChaRng::seed_from_u64(peer_id as u64),
-            RaftConfig {
-                election_timeout_ticks: 10,
-                heartbeat_interval_ticks: 1,
-                replication_chunk_size: usize::max_value(),
-            },
+            RAFT_CONFIG,
         ),
         rx,
     ));

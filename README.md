@@ -12,6 +12,7 @@ A Rust implementation of the [Raft consensus algorithm](https://raft.github.io/)
 This crate is `no_std`, but depends on the `alloc` crate.
 
 [API Documentation](https://simple-raft-rs.github.io/raft-rs/raft)  
+[Examples](examples)
 
 ## Crate Features
 
