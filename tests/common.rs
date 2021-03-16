@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#![allow(dead_code)]
+
 use raft::core::RaftState;
 use raft::log::mem::RaftLogMemory;
 use raft::message::{RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
@@ -46,7 +48,8 @@ pub struct TestRaftGroupConfig {
     pub down: BTreeSet<NodeId>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, derive_more::Display, Eq, derive_more::From, PartialEq, PartialOrd, Ord)]
+#[display(fmt = "{:?}", self)]
 pub struct NodeId(u64);
 
 pub struct TestLogger;
@@ -54,6 +57,15 @@ pub struct TestLogger;
 pub struct TestLoggerContext {
     node_id: Option<NodeId>,
     tick: Option<u32>,
+}
+
+pub fn rpc_types() -> [Rpc; 4] {
+    [
+        Rpc::VoteRequest(Default::default()),
+        Rpc::VoteResponse(Default::default()),
+        Rpc::AppendRequest(Default::default()),
+        Rpc::AppendResponse(Default::default()),
+    ]
 }
 
 pub fn init_random() -> ChaChaRng {
@@ -236,16 +248,6 @@ impl TestRaftGroupConfig {
             self.drops.contains(&(None, Some(to))) ||
             self.down.contains(&from) ||
             self.down.contains(&to)
-    }
-}
-
-//
-// NodeId impls
-//
-
-impl std::fmt::Display for NodeId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(self, f)
     }
 }
 
