@@ -21,7 +21,7 @@ use common::*;
 use raft::message::{RaftMessage, Rpc, VoteResponse};
 
 #[test]
-pub fn test_empty_group_become_leader() {
+pub fn empty_group_become_leader() {
     let mut raft = raft(1, vec![], None, &mut init_random());
     assert!(!raft.is_leader());
 
@@ -30,7 +30,7 @@ pub fn test_empty_group_become_leader() {
 }
 
 #[test]
-pub fn test_node_one_peer_become_leader() {
+pub fn _1_peer_become_leader() {
     let mut raft = raft(1, vec![2], None, &mut init_random());
     assert!(!raft.is_leader());
 
@@ -42,7 +42,7 @@ pub fn test_node_one_peer_become_leader() {
 }
 
 #[test]
-pub fn test_node_become_leader() {
+pub fn become_leader() {
     let mut raft = raft(1, vec![2, 3], None, &mut init_random());
     assert!(!raft.is_leader());
 
@@ -57,7 +57,7 @@ pub fn test_node_become_leader() {
 }
 
 #[test]
-pub fn test_node_vote_old_term() {
+pub fn vote_old_term() {
     let mut raft = raft(1, vec![2, 3], None, &mut init_random());
     let RaftMessage { term, .. } = raft.timeout().unwrap().message;
     raft.timeout();
@@ -67,7 +67,7 @@ pub fn test_node_vote_old_term() {
 }
 
 #[test]
-pub fn test_node_vote_twice() {
+pub fn vote_twice() {
     let mut raft = raft(1, vec![2, 3, 4, 5], None, &mut init_random());
     let RaftMessage { term, .. } = raft.timeout().unwrap().message;
 
@@ -80,98 +80,98 @@ pub fn test_node_vote_twice() {
 }
 
 #[test]
-pub fn test_1_node_timeout() {
+pub fn _1_timeout() {
     TestRaftGroup::new(1, &mut init_random(), config())
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_2_nodes_timeout() {
+pub fn _2_nodes_timeout() {
     TestRaftGroup::new(2, &mut init_random(), config())
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_2_nodes_failed_timeout() {
+pub fn _2_nodes_failed_timeout() {
     TestRaftGroup::new(2, &mut init_random(), config().node_down(1))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(!group.has_leader()));
 }
 
 #[test]
-pub fn test_3_nodes_timeout() {
+pub fn _3_nodes_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config())
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_3_nodes_degraded_timeout() {
+pub fn _3_nodes_degraded_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config().isolate(1))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_3_nodes_split_timeout() {
+pub fn _3_nodes_split_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config().drop_between(0, 1))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_3_nodes_failed_timeout() {
+pub fn _3_nodes_failed_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config().node_down(1).node_down(2))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(!group.has_leader()));
 }
 
 #[test]
-pub fn test_4_nodes_degraded_timeout() {
+pub fn _4_nodes_degraded_timeout() {
     TestRaftGroup::new(4, &mut init_random(), config().isolate(1))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_4_nodes_failed_timeout() {
+pub fn _4_nodes_failed_timeout() {
     TestRaftGroup::new(4, &mut init_random(), config().isolate(1).isolate(2))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(!group.has_leader()));
 }
 
 #[test]
-pub fn test_5_nodes_degraded_timeout() {
+pub fn _5_nodes_degraded_timeout() {
     TestRaftGroup::new(5, &mut init_random(), config().isolate(1).isolate(2))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_5_nodes_failed_timeout() {
+pub fn _5_nodes_failed_timeout() {
     TestRaftGroup::new(5, &mut init_random(), config().isolate(1).isolate(2).isolate(3))
         .run_on_node(0, |raft| raft.timeout())
         .inspect(|group| assert!(!group.has_leader()));
 }
 
 #[test]
-pub fn test_election_timeout() {
+pub fn election_timeout() {
     TestRaftGroup::new(3, &mut init_random(), config())
         .run_until(|group| group.has_leader())
         .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_degraded() {
+pub fn degraded() {
     TestRaftGroup::new(3, &mut init_random(), config().isolate(0))
         .run_until(|group| group.has_leader())
         .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.has_leader()));
 }
 
 #[test]
-pub fn test_split_unstable() {
+pub fn split_unstable() {
     TestRaftGroup::new(3, &mut init_random(), config().drop_between(1, 2))
         .run_on_node(1, |raft| raft.timeout())
         .inspect(|group| assert!(group.nodes[1].is_leader()))
@@ -180,14 +180,14 @@ pub fn test_split_unstable() {
 }
 
 #[test]
-pub fn test_split_stable() {
+pub fn split_stable() {
     TestRaftGroup::new(3, &mut init_random(), config().drop_between(1, 2))
         .run_on_node(0, |raft| raft.timeout())
         .run_for_inspect(10 * CONFIG.election_timeout_ticks, |group| assert!(group.nodes[0].is_leader()));
 }
 
 #[test]
-pub fn test_split_rejoin() {
+pub fn split_rejoin() {
     TestRaftGroup::new(3, &mut init_random(), config().drop_between(1, 2))
         .run_on_node(1, |raft| raft.timeout())
         .inspect(|group| assert!(group.nodes[1].is_leader()))
