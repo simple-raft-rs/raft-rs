@@ -19,7 +19,7 @@
 
 use raft::core::RaftState;
 use raft::log::mem::RaftLogMemory;
-use raft::message::{RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
+use raft::message::{LogEntry, RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
 use raft::node::RaftConfig;
 use rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -40,6 +40,7 @@ pub struct TestRaftGroup {
     pub nodes: Vec<TestRaft>,
     pub tick: u32,
     pub config: TestRaftGroupConfig,
+    pub dropped_messages: Vec<(NodeId, SendableRaftMessage<NodeId>)>,
 }
 
 #[derive(Clone, Default)]
@@ -111,11 +112,13 @@ pub fn run_group<'a>(
     start_tick: u32,
     ticks: Option<u32>,
     config: &mut TestRaftGroupConfig,
+    dropped_messages: &mut Vec<(NodeId, SendableRaftMessage<NodeId>)>,
 ) {
     let mut nodes: Vec<_> = nodes.collect();
     let node_ids: Vec<_> = nodes.iter().map(|node| *node.node_id()).collect();
     let mut messages = VecDeque::with_capacity(nodes.len() * nodes.len());
     messages.extend(initial_messages.into_iter());
+    messages.extend(dropped_messages.drain(..));
 
     for tick in 0..ticks.unwrap_or(1) {
         TestLogger::set_tick(Some(start_tick + tick));
@@ -146,6 +149,11 @@ pub fn run_group<'a>(
                 if !config.should_drop(from, to_node_id) {
                     log::info!("<- {} {}", from, message);
                     messages.extend(to_node.receive(message, from).map(|message| (to_node_id, message)));
+                } else {
+                    log::info!("<- {} DROPPED {}", from, message);
+                    if let Some(reply_to_node_id) = reply_to_node_id {
+                        dropped_messages.push((from, SendableRaftMessage { message, dest: RaftMessageDestination::To(reply_to_node_id) }));
+                    }
                 }
                 messages.extend(append_entries(to_node, node_ids.iter().cloned()).map(|message| (to_node_id, message)));
             }
@@ -166,6 +174,7 @@ impl TestRaftGroup {
             nodes: nodes.iter().map(|node_id| raft(*node_id, nodes.clone(), None, random)).collect(),
             tick: 0,
             config,
+            dropped_messages: Default::default(),
         }
     }
 
@@ -174,9 +183,21 @@ impl TestRaftGroup {
         while !until_fun(self) {
             ticks_remaining = ticks_remaining.checked_sub(1).expect("condition failed after maximum simulation length");
             self.tick += 1;
-            run_group(self.nodes.iter_mut(), None, self.tick, Some(1), &mut self.config);
+            run_group(self.nodes.iter_mut(), None, self.tick, Some(1), &mut self.config, &mut self.dropped_messages);
         }
         self
+    }
+
+    pub fn run_until_commit(&mut self, mut until_fun: impl FnMut(&LogEntry) -> bool) -> &mut Self {
+        self.run_until(|group| {
+            let result = group.take_committed().any(|commit| !commit.data.is_empty() && until_fun(&commit));
+            group.take_committed().for_each(drop);
+            result
+        })
+    }
+
+    pub fn run_for(&mut self, ticks: u32) -> &mut Self {
+        self.run_for_inspect(ticks, |_| ())
     }
 
     pub fn run_for_inspect(&mut self, ticks: u32, mut fun: impl FnMut(&mut Self)) -> &mut Self {
@@ -184,9 +205,18 @@ impl TestRaftGroup {
         while let Some(new_ticks_remaining) = ticks_remaining.checked_sub(1) {
             ticks_remaining = new_ticks_remaining;
             self.tick += 1;
-            run_group(self.nodes.iter_mut(), None, self.tick, Some(1), &mut self.config);
+            run_group(self.nodes.iter_mut(), None, self.tick, Some(1), &mut self.config, &mut self.dropped_messages);
             fun(self);
         }
+        self
+    }
+
+    pub fn run_on_all(
+        &mut self,
+        mut fun: impl FnMut(&mut TestRaft) -> Option<SendableRaftMessage<NodeId>>,
+    ) -> &mut Self {
+        let messages = self.nodes.iter_mut().flat_map(|node| fun(node).map(|message| (*node.node_id(), message))).collect::<Vec<_>>();
+        run_group(self.nodes.iter_mut(), messages, self.tick, None, &mut self.config, &mut self.dropped_messages);
         self
     }
 
@@ -197,7 +227,7 @@ impl TestRaftGroup {
     ) -> &mut Self {
         let node_id = *self.nodes[node_idx].node_id();
         let messages = fun(&mut self.nodes[node_idx]).map(|message| (node_id, message));
-        run_group(self.nodes.iter_mut(), messages, self.tick, None, &mut self.config);
+        run_group(self.nodes.iter_mut(), messages, self.tick, None, &mut self.config, &mut self.dropped_messages);
         self
     }
 
@@ -209,6 +239,10 @@ impl TestRaftGroup {
     pub fn modify(&mut self, fun: impl FnOnce(&mut Self)) -> &mut Self {
         fun(self);
         self
+    }
+
+    pub fn take_committed(&mut self) -> impl Iterator<Item = LogEntry> + '_ {
+        self.nodes.iter_mut().flat_map(|node| node.take_committed())
     }
 
     pub fn has_leader(&self) -> bool {
@@ -235,6 +269,11 @@ impl TestRaftGroupConfig {
     pub fn drop_between(mut self, from: u64, to: u64) -> Self {
         self.drops.insert((Some(NodeId(from)), Some(NodeId(to))));
         self.drops.insert((Some(NodeId(to)), Some(NodeId(from))));
+        self
+    }
+
+    pub fn drop_to(mut self, node_id: u64) -> Self {
+        self.drops.insert((None, Some(NodeId(node_id))));
         self
     }
 
