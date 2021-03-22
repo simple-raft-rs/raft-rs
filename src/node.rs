@@ -52,10 +52,23 @@ use rand_core::RngCore;
 /// quicker to network disruptions, but may result in spurious leadership changes when the network latency exceeds
 /// `time_interval * election_timeout_ticks`.
 ///
+/// # Message delivery
+///
+/// Unicast message delivery is assumed to be non-lossy in order for replication to make progress. In other words, once
+/// a non-broadcast [`SendableRaftMessage`] is returned from an API such as [`append`], [`receive`], or [`timer_tick`],
+/// it must be retained and retransmitted until it is confirmed to have been processed by [`receive`] on its
+/// destination. Messages may be safely delivered out-of-order or more than once, however.
+///
+/// To prevent unbounded queueing, the API is designed to only ever return a bounded amount of unacknowledged unicast
+/// message data. This amount can be approximately controlled by [`replication_chunk_size`].
+///
 /// [`append`]: Self::append
 /// [`leader`]: Self::leader
 /// [`receive`]: Self::receive
+/// [`replication_chunk_size`]: RaftConfig::replication_chunk_size
+/// [`SendableRaftMessage`]: crate::message::SendableRaftMessage
 /// [`take_committed`]: Self::take_committed
+/// [`timer_tick`]: Self::timer_tick
 pub struct RaftNode<Log, Random, NodeId> {
     state: RaftState<Log, Random, NodeId>,
 }
@@ -115,9 +128,13 @@ where Log: RaftLog,
 
     /// Request appending an entry with arbitrary `data` to the Raft log, returning messages to be sent.
     ///
+    /// See ["Message delivery"] for details about delivery requirements for the returned messages.
+    ///
     /// # Errors
     ///
     /// If this request would immediately be cancelled, then an error is returned.
+    ///
+    /// ["Message delivery"]: RaftNode#message-delivery
     #[must_use = "This function returns Raft messages to be sent."]
     pub fn append<T: Into<Bytes>>(&mut self, data: T) -> Result<impl Iterator<Item = SendableRaftMessage<NodeId>> + '_, AppendError<Log::Error>> {
         let () = self.state.client_request(data.into())?;
@@ -170,6 +187,10 @@ where Log: RaftLog,
     }
 
     /// Processes receipt of a `message` from a peer with ID `from`, returning messages to be sent.
+    ///
+    /// See ["Message delivery"] for details about delivery requirements for the returned messages.
+    ///
+    /// ["Message delivery"]: RaftNode#message-delivery
     #[must_use = "This function returns Raft messages to be sent."]
     pub fn receive(
         &mut self,
@@ -206,6 +227,10 @@ where Log: RaftLog,
     }
 
     /// Ticks forward this node's internal clock by one tick, returning messages to be sent.
+    ///
+    /// See ["Message delivery"] for details about delivery requirements for the returned messages.
+    ///
+    /// ["Message delivery"]: RaftNode#message-delivery
     #[must_use = "This function returns Raft messages to be sent."]
     pub fn timer_tick(&mut self) -> impl Iterator<Item = SendableRaftMessage<NodeId>> + '_ {
         let message = self.state.timer_tick();

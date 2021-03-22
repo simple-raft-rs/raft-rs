@@ -9,6 +9,13 @@ A Rust implementation of the [Raft consensus algorithm](https://raft.github.io/)
   snapshots are currently not implemented.
 - Usability. A primary goal of the API to be simple and not error-prone.
 
+Important caveats:
+
+- Unicast message delivery is assumed to be non-lossy in order for replication to make progress. In other words, once a
+  non-broadcast message is returned from an API, it must be retained and retransmitted until it is acknowledged as
+  delivered by its destination. Messages may be safely delivered out-of-order or more than once, however. To prevent
+  unbounded queueing, the API is designed to only ever return a bounded amount of unacknowledged unicast message data.
+
 This crate is `no_std`, but depends on the `alloc` crate.
 
 [API Documentation](https://simple-raft-rs.github.io/raft-rs/raft)  
