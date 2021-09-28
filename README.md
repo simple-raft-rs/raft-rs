@@ -18,7 +18,7 @@ Important caveats:
 
 This crate is `no_std`, but depends on the `alloc` crate.
 
-[API Documentation](https://simple-raft-rs.github.io/raft-rs/raft)  
+[API Documentation](https://simple-raft-rs.github.io/raft-rs/simple_raft)  
 [Examples](examples)
 
 ## Crate Features

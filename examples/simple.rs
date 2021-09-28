@@ -1,10 +1,10 @@
-//! A simple example from the `raft` crate's crate-level documentation
+//! A simple example from the crate-level documentation
 
-use raft::log::mem::RaftLogMemory;
-use raft::node::{RaftConfig, RaftNode};
-use raft::message::{RaftMessageDestination, SendableRaftMessage};
 use rand_chacha::ChaChaRng;
 use rand_core::SeedableRng;
+use simple_raft::log::mem::RaftLogMemory;
+use simple_raft::node::{RaftConfig, RaftNode};
+use simple_raft::message::{RaftMessageDestination, SendableRaftMessage};
 use std::collections::VecDeque;
 use std::str;
 

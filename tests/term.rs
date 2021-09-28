@@ -18,7 +18,7 @@
 mod common;
 
 use common::*;
-use raft::message::{RaftMessage, Rpc, TermId, VoteResponse};
+use simple_raft::message::{RaftMessage, Rpc, TermId, VoteResponse};
 
 #[test]
 pub fn leader_update_term() {

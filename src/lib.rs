@@ -40,9 +40,9 @@
 //! # Example
 //!
 //! ```
-//! use raft::log::mem::RaftLogMemory;
-//! use raft::node::{RaftConfig, RaftNode};
-//! use raft::message::{RaftMessageDestination, SendableRaftMessage};
+//! use simple_raft::log::mem::RaftLogMemory;
+//! use simple_raft::node::{RaftConfig, RaftNode};
+//! use simple_raft::message::{RaftMessageDestination, SendableRaftMessage};
 //! use rand_chacha::ChaChaRng;
 //! use rand_core::SeedableRng;
 //! use std::collections::VecDeque;

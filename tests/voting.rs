@@ -18,7 +18,7 @@
 mod common;
 
 use common::*;
-use raft::message::{RaftMessage, Rpc, VoteResponse};
+use simple_raft::message::{RaftMessage, Rpc, VoteResponse};
 
 #[test]
 pub fn empty_group_become_leader() {

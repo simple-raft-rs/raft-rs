@@ -1,10 +1,10 @@
 //! A simple example with a thread per RaftNode
 
-use raft::log::mem::RaftLogMemory;
-use raft::node::{RaftConfig, RaftNode};
-use raft::message::{RaftMessage, RaftMessageDestination, SendableRaftMessage};
 use rand_chacha::ChaChaRng;
 use rand_core::SeedableRng;
+use simple_raft::log::mem::RaftLogMemory;
+use simple_raft::node::{RaftConfig, RaftNode};
+use simple_raft::message::{RaftMessage, RaftMessageDestination, SendableRaftMessage};
 use std::str;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc;

@@ -18,7 +18,7 @@
 mod common;
 
 use common::*;
-use raft::message::{Rpc, TermId};
+use simple_raft::message::{Rpc, TermId};
 
 #[test]
 pub fn append_request_update_leader() {

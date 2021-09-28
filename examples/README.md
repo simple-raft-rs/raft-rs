@@ -1,6 +1,6 @@
 # Examples
 
-* [Simple](simple.rs) -- A simple example from the `raft` crate's crate-level documentation.
+* [Simple](simple.rs) -- A simple example from the crate-level documentation.
 * [Threaded](threaded.rs) -- A simple example with a thread per RaftNode.
 * [`raftcat`](raftcat.rs) -- A complex networked example as a command-line tool.
 

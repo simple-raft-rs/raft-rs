@@ -17,12 +17,12 @@
 
 #![allow(dead_code)]
 
-use raft::core::RaftState;
-use raft::log::mem::RaftLogMemory;
-use raft::message::{LogEntry, RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
-use raft::node::RaftConfig;
 use rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
+use simple_raft::core::RaftState;
+use simple_raft::log::mem::RaftLogMemory;
+use simple_raft::message::{LogEntry, RaftMessage, RaftMessageDestination, Rpc, SendableRaftMessage, TermId};
+use simple_raft::node::RaftConfig;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
 

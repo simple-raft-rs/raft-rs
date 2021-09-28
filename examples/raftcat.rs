@@ -2,10 +2,10 @@
 
 use bytes::{BufMut, Bytes};
 use prost::Message;
-use raft::log::mem::RaftLogMemory;
-use raft::node::{AppendError, RaftConfig, RaftNode};
-use raft::message::{RaftMessage, RaftMessageDestination, SendableRaftMessage};
 use rand_core::OsRng;
+use simple_raft::log::mem::RaftLogMemory;
+use simple_raft::node::{AppendError, RaftConfig, RaftNode};
+use simple_raft::message::{RaftMessage, RaftMessageDestination, SendableRaftMessage};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::io::{BufRead, BufReader, Read, Write};
