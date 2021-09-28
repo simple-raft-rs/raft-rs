@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["RaftLogMemory","A naive in-memory implementation of `RaftLog`, primarily for testing."]]});

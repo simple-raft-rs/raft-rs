@@ -1,0 +1,98 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Raft consensus algorithm implementation."><meta name="keywords" content="rust, rustlang, rust-lang, simple_raft"><title>simple_raft - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../ayu.css" disabled ><script id="default-settings" ></script><script src="../storage.js"></script><script src="../crates.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../favicon.svg"><link rel="alternate icon" type="image/png" href="../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../simple_raft/index.html'><div class='logo-container rust-logo'><img src='../rust-logo.png' alt='logo'></div></a><h2 class="location">Crate simple_raft</h2><div class="block version"><div class="narrow-helper"></div><p>Version 0.2.0</p></div><div class="sidebar-elems"><a id="all-types" href="all.html"><p>See all simple_raft's items</p></a><div class="block items"><ul><li><a href="#modules">Modules</a></li></ul></div><div id="sidebar-vars" data-name="simple_raft" data-ty="mod" data-relpath=""></div><script defer src="sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../brush.svg"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input"name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../wheel.svg"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="in-band">Crate <a class="mod" href="#">simple_raft</a><button id="copy-path" onclick="copy_path(this)" title="copy path"><img src="../clipboard.svg" width="19" height="18" alt="Copy item import" title="Copy item import to clipboard"></button></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../src/simple_raft/lib.rs.html#18-131" title="goto source code">[src]</a></span></h1><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Raft consensus algorithm implementation.</p>
+<p>Raft is a consensus algorithm which replicates a strongly-consistent distributed log of entries with arbitrary data
+amongst a group of peers. It is also fault-tolerant, allowing replication to continue while a majority of peers can
+still communicate with each other. This crate provides an implementation of the Raft consensus algorithm with some
+optional features not implemented, such as pre-voting, membership changes, and snapshots.</p>
+<p>The Raft algorithm is implemented as a state machine driven in a few ways:</p>
+<ul>
+<li>When attempting to append a new entry to the distributed log: <a href="node/struct.RaftNode.html#method.append"><code>append</code></a> is called.</li>
+<li>When a message is received from a peer: <a href="node/struct.RaftNode.html#method.receive"><code>receive</code></a> is called.</li>
+<li>Every time a fixed amount of time has elapsed: <a href="node/struct.RaftNode.html#method.timer_tick"><code>timer_tick</code></a> is called.</li>
+</ul>
+<p>Each of these functions modifies the internal state and returns <a href="message/struct.SendableRaftMessage.html">messages</a> to be sent
+to peers. Once a log entry is “committed”, or guaranteed to be returned at the same index on every functioning peer
+in the group, it may be retrieved using <a href="node/struct.RaftNode.html#method.take_committed"><code>take_committed</code></a>. An append to the log may
+be cancelled before reaching the committed state, however, which is discussed in more detail in <a href="node/struct.RaftNode.html#appending-entries-to-the-distributed-log">“Appending entries to the distributed log”</a>.</p>
+<p>The backing storage for the distributed log must be provided as an implementation of the <a href="log/trait.RaftLog.html"><code>RaftLog</code></a>
+trait, with careful attention to following the trait specification. A trivial in-memory implementation is provided
+by <a href="log/mem/struct.RaftLogMemory.html"><code>RaftLogMemory</code></a>.</p>
+<h1 id="example" class="section-header"><a href="#example">Example</a></h1>
+<div class="example-wrap"><pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">simple_raft::log::mem::RaftLogMemory</span>;
+<span class="kw">use</span> <span class="ident">simple_raft::node</span>::{<span class="ident">RaftConfig</span>, <span class="ident">RaftNode</span>};
+<span class="kw">use</span> <span class="ident">simple_raft::message</span>::{<span class="ident">RaftMessageDestination</span>, <span class="ident">SendableRaftMessage</span>};
+<span class="kw">use</span> <span class="ident">rand_chacha::ChaChaRng</span>;
+<span class="kw">use</span> <span class="ident">rand_core::SeedableRng</span>;
+<span class="kw">use</span> <span class="ident">std::collections::VecDeque</span>;
+<span class="kw">use</span> <span class="ident">std::str</span>;
+
+<span class="comment">// Construct 5 Raft peers</span>
+<span class="kw">type</span> <span class="ident">NodeId</span> <span class="op">=</span> <span class="ident">usize</span>;
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">peers</span> <span class="op">=</span> (<span class="number">0</span>..<span class="number">5</span>).<span class="ident">map</span>(<span class="op">|</span><span class="ident">id</span>: <span class="ident">NodeId</span><span class="op">|</span> <span class="ident">RaftNode::new</span>(
+    <span class="ident">id</span>,
+    (<span class="number">0</span>..<span class="number">5</span>).<span class="ident">collect</span>(),
+    <span class="ident">RaftLogMemory::new_unbounded</span>(),
+    <span class="ident">ChaChaRng::seed_from_u64</span>(<span class="ident">id</span> <span class="kw">as</span> <span class="ident">u64</span>),
+    <span class="ident">RaftConfig</span> {
+        <span class="ident">election_timeout_ticks</span>: <span class="number">10</span>,
+        <span class="ident">heartbeat_interval_ticks</span>: <span class="number">1</span>,
+        <span class="ident">replication_chunk_size</span>: <span class="ident">usize::max_value</span>(),
+    },
+)).<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+
+<span class="comment">// Simulate reliably sending messages instantaneously between peers</span>
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inboxes</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="ident">VecDeque::new</span>(); <span class="ident">peers</span>.<span class="ident">len</span>()];
+<span class="kw">let</span> <span class="ident">send_message</span> <span class="op">=</span> <span class="op">|</span><span class="ident">src_id</span>: <span class="ident">NodeId</span>, <span class="ident">sendable</span>: <span class="ident">SendableRaftMessage</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span>, <span class="ident">inboxes</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">VecDeque</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">|</span> {
+    <span class="kw">match</span> <span class="ident">sendable</span>.<span class="ident">dest</span> {
+        <span class="ident">RaftMessageDestination::Broadcast</span> <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="macro">println!</span>(<span class="string">&quot;peer {} -&gt; all: {}&quot;</span>, <span class="ident">src_id</span>, <span class="kw-2">&amp;</span><span class="ident">sendable</span>.<span class="ident">message</span>);
+            <span class="ident">inboxes</span>.<span class="ident">iter_mut</span>().<span class="ident">for_each</span>(<span class="op">|</span><span class="ident">inbox</span><span class="op">|</span> <span class="ident">inbox</span>.<span class="ident">push_back</span>((<span class="ident">src_id</span>, <span class="ident">sendable</span>.<span class="ident">message</span>.<span class="ident">clone</span>())))
+        }
+        <span class="ident">RaftMessageDestination::To</span>(<span class="ident">dst_id</span>) <span class="op">=</span><span class="op">&gt;</span> {
+            <span class="macro">println!</span>(<span class="string">&quot;peer {} -&gt; peer {}: {}&quot;</span>, <span class="ident">src_id</span>, <span class="ident">dst_id</span>, <span class="kw-2">&amp;</span><span class="ident">sendable</span>.<span class="ident">message</span>);
+            <span class="ident">inboxes</span>[<span class="ident">dst_id</span>].<span class="ident">push_back</span>((<span class="ident">src_id</span>, <span class="ident">sendable</span>.<span class="ident">message</span>));
+        }
+    }
+};
+
+<span class="comment">// Loop until a log entry is committed on all peers</span>
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">appended</span> <span class="op">=</span> <span class="bool-val">false</span>;
+<span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">peers_committed</span> <span class="op">=</span> <span class="macro">vec!</span>[<span class="bool-val">false</span>; <span class="ident">peers</span>.<span class="ident">len</span>()];
+<span class="kw">while</span> <span class="op">!</span><span class="ident">peers_committed</span>.<span class="ident">iter</span>().<span class="ident">all</span>(<span class="op">|</span><span class="ident">seen</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">seen</span>) {
+    <span class="kw">for</span> (<span class="ident">peer_id</span>, <span class="ident">peer</span>) <span class="kw">in</span> <span class="ident">peers</span>.<span class="ident">iter_mut</span>().<span class="ident">enumerate</span>() {
+        <span class="comment">// Tick the timer</span>
+        <span class="kw">let</span> <span class="ident">new_messages</span> <span class="op">=</span> <span class="ident">peer</span>.<span class="ident">timer_tick</span>();
+        <span class="ident">new_messages</span>.<span class="ident">for_each</span>(<span class="op">|</span><span class="ident">message</span><span class="op">|</span> <span class="ident">send_message</span>(<span class="ident">peer_id</span>, <span class="ident">message</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inboxes</span>));
+
+        <span class="comment">// Append a log entry on the leader</span>
+        <span class="kw">if</span> <span class="op">!</span><span class="ident">appended</span> <span class="op">&amp;&amp;</span> <span class="ident">peer</span>.<span class="ident">is_leader</span>() {
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">new_messages</span>) <span class="op">=</span> <span class="ident">peer</span>.<span class="ident">append</span>(<span class="string">&quot;Hello world!&quot;</span>) {
+                <span class="ident">new_messages</span>.<span class="ident">for_each</span>(<span class="op">|</span><span class="ident">message</span><span class="op">|</span> <span class="ident">send_message</span>(<span class="ident">peer_id</span>, <span class="ident">message</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inboxes</span>));
+                <span class="ident">appended</span> <span class="op">=</span> <span class="bool-val">true</span>;
+            }
+        }
+
+        <span class="comment">// Process message inbox</span>
+        <span class="kw">while</span> <span class="kw">let</span> <span class="prelude-val">Some</span>((<span class="ident">src_id</span>, <span class="ident">message</span>)) <span class="op">=</span> <span class="ident">inboxes</span>[<span class="ident">peer_id</span>].<span class="ident">pop_front</span>() {
+            <span class="kw">let</span> <span class="ident">new_messages</span> <span class="op">=</span> <span class="ident">peer</span>.<span class="ident">receive</span>(<span class="ident">message</span>, <span class="ident">src_id</span>);
+            <span class="ident">new_messages</span>.<span class="ident">for_each</span>(<span class="op">|</span><span class="ident">message</span><span class="op">|</span> <span class="ident">send_message</span>(<span class="ident">peer_id</span>, <span class="ident">message</span>, <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">inboxes</span>));
+        }
+
+        <span class="comment">// Check for committed log entries</span>
+        <span class="kw">for</span> <span class="ident">log_entry</span> <span class="kw">in</span> <span class="ident">peer</span>.<span class="ident">take_committed</span>() {
+            <span class="kw">if</span> <span class="op">!</span><span class="ident">log_entry</span>.<span class="ident">data</span>.<span class="ident">is_empty</span>() {
+                <span class="macro">println!</span>(<span class="string">&quot;peer {} saw commit {}&quot;</span>, <span class="ident">peer_id</span>, <span class="ident">str::from_utf8</span>(<span class="kw-2">&amp;</span><span class="ident">log_entry</span>.<span class="ident">data</span>).<span class="ident">unwrap</span>());
+                <span class="macro">assert!</span>(<span class="op">!</span><span class="ident">peers_committed</span>[<span class="ident">peer_id</span>]);
+                <span class="ident">peers_committed</span>[<span class="ident">peer_id</span>] <span class="op">=</span> <span class="bool-val">true</span>;
+            }
+        }
+    }
+}</pre></div>
+</div></details><h2 id="modules" class="section-header"><a href="#modules">Modules</a></h2>
+<div class="item-table"><div class="item-left module-item"><a class="mod" href="core/index.html" title="simple_raft::core mod">core</a></div><div class="item-right docblock-short"><p>Unstable, low-level API for the complete state of a Raft node.</p>
+</div><div class="item-left module-item"><a class="mod" href="log/index.html" title="simple_raft::log mod">log</a></div><div class="item-right docblock-short"><p>Types related to Raft log storage.</p>
+</div><div class="item-left module-item"><a class="mod" href="message/index.html" title="simple_raft::message mod">message</a></div><div class="item-right docblock-short"><p>Raft message types for sending between nodes.</p>
+</div><div class="item-left module-item"><a class="mod" href="node/index.html" title="simple_raft::node mod">node</a></div><div class="item-right docblock-short"><p>Higher-level API for a Raft node.</p>
+</div></div></section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../" data-current-crate="simple_raft" data-search-index-js="../search-index.js" data-search-js="../search.js"></div>
+    <script src="../main.js"></script>
+</body></html>

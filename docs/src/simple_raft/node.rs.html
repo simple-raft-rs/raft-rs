@@ -1,0 +1,499 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src&#x2F;node.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>node.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings" ></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg"><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../simple_raft/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu" title="themes"><img width="18" height="18" alt="Pick another theme!" src="../../brush.svg"></button><div id="theme-choices" role="menu"></div></div><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input"name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" id="help-button" title="help">?</button><a id="settings-menu" href="../../settings.html" title="settings"><img width="18" height="18" alt="Change settings" src="../../wheel.svg"></a></div></form></nav><section id="main" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">  1</span>
+<span id="2">  2</span>
+<span id="3">  3</span>
+<span id="4">  4</span>
+<span id="5">  5</span>
+<span id="6">  6</span>
+<span id="7">  7</span>
+<span id="8">  8</span>
+<span id="9">  9</span>
+<span id="10"> 10</span>
+<span id="11"> 11</span>
+<span id="12"> 12</span>
+<span id="13"> 13</span>
+<span id="14"> 14</span>
+<span id="15"> 15</span>
+<span id="16"> 16</span>
+<span id="17"> 17</span>
+<span id="18"> 18</span>
+<span id="19"> 19</span>
+<span id="20"> 20</span>
+<span id="21"> 21</span>
+<span id="22"> 22</span>
+<span id="23"> 23</span>
+<span id="24"> 24</span>
+<span id="25"> 25</span>
+<span id="26"> 26</span>
+<span id="27"> 27</span>
+<span id="28"> 28</span>
+<span id="29"> 29</span>
+<span id="30"> 30</span>
+<span id="31"> 31</span>
+<span id="32"> 32</span>
+<span id="33"> 33</span>
+<span id="34"> 34</span>
+<span id="35"> 35</span>
+<span id="36"> 36</span>
+<span id="37"> 37</span>
+<span id="38"> 38</span>
+<span id="39"> 39</span>
+<span id="40"> 40</span>
+<span id="41"> 41</span>
+<span id="42"> 42</span>
+<span id="43"> 43</span>
+<span id="44"> 44</span>
+<span id="45"> 45</span>
+<span id="46"> 46</span>
+<span id="47"> 47</span>
+<span id="48"> 48</span>
+<span id="49"> 49</span>
+<span id="50"> 50</span>
+<span id="51"> 51</span>
+<span id="52"> 52</span>
+<span id="53"> 53</span>
+<span id="54"> 54</span>
+<span id="55"> 55</span>
+<span id="56"> 56</span>
+<span id="57"> 57</span>
+<span id="58"> 58</span>
+<span id="59"> 59</span>
+<span id="60"> 60</span>
+<span id="61"> 61</span>
+<span id="62"> 62</span>
+<span id="63"> 63</span>
+<span id="64"> 64</span>
+<span id="65"> 65</span>
+<span id="66"> 66</span>
+<span id="67"> 67</span>
+<span id="68"> 68</span>
+<span id="69"> 69</span>
+<span id="70"> 70</span>
+<span id="71"> 71</span>
+<span id="72"> 72</span>
+<span id="73"> 73</span>
+<span id="74"> 74</span>
+<span id="75"> 75</span>
+<span id="76"> 76</span>
+<span id="77"> 77</span>
+<span id="78"> 78</span>
+<span id="79"> 79</span>
+<span id="80"> 80</span>
+<span id="81"> 81</span>
+<span id="82"> 82</span>
+<span id="83"> 83</span>
+<span id="84"> 84</span>
+<span id="85"> 85</span>
+<span id="86"> 86</span>
+<span id="87"> 87</span>
+<span id="88"> 88</span>
+<span id="89"> 89</span>
+<span id="90"> 90</span>
+<span id="91"> 91</span>
+<span id="92"> 92</span>
+<span id="93"> 93</span>
+<span id="94"> 94</span>
+<span id="95"> 95</span>
+<span id="96"> 96</span>
+<span id="97"> 97</span>
+<span id="98"> 98</span>
+<span id="99"> 99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+</pre><pre class="rust">
+<span class="comment">/*
+ * Copyright (C) 2019 Open Whisper Systems
+ * Copyright (C) 2021 jessa0
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see &lt;http://www.gnu.org/licenses/&gt;.
+ */</span>
+
+<span class="doccomment">//! Higher-level API for a Raft node.</span>
+
+<span class="kw">use</span> <span class="ident">alloc::collections::BTreeSet</span>;
+<span class="kw">use</span> <span class="ident">bytes::Bytes</span>;
+<span class="kw">use</span> <span class="ident">core::fmt::Display</span>;
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::core</span>::{<span class="ident">RaftState</span>, <span class="ident">ReplicationState</span>};
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::message</span>::{<span class="ident">LogIndex</span>, <span class="ident">RaftMessage</span>, <span class="ident">SendableRaftMessage</span>, <span class="ident">TermId</span>};
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::log</span>::{<span class="ident">CommittedIter</span>, <span class="ident">RaftLog</span>};
+<span class="kw">use</span> <span class="ident">rand_core::RngCore</span>;
+
+<span class="doccomment">/// A Raft node, used for replicating a strongly-consistent distributed log of entries with arbitrary data amongst its</span>
+<span class="doccomment">/// peers.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// The distributed log can be used, for example, to replicate transactions in a database.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Appending entries to the distributed log</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Log entries passed to [`append`] are not guaranteed to ultimately be appended to the distributed log, and may be</span>
+<span class="doccomment">/// cancelled any time [`receive`] is called before they are &quot;committed&quot;. The provided [`RaftLog`] should provide an API</span>
+<span class="doccomment">/// to find out which log entries have been cancelled. Only log entries passed to [`append`] on a particular node are</span>
+<span class="doccomment">/// guaranteed to appear as cancelled in its own [`RaftLog`], but entries appended on other nodes may appear as well.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// The distributed log may only be appended to by the node returned by [`leader`], but even that node is not guaranteed</span>
+<span class="doccomment">/// to be able to append to the log, since it must be able to send each new entry to a majority of its peers before</span>
+<span class="doccomment">/// losing leadership in order for the entry to become committed. The leader may change at any time, and therefore an</span>
+<span class="doccomment">/// entry may be first returned from [`take_committed`] on a node different than that to which it was submitted.</span>
+<span class="doccomment">/// However, [`take_committed`] is guaranteed to return the same entries in the same order on every node.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Timer ticks</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Timeouts in [`RaftNode`] are driven by a timer ticking at fixed interval, with the number of ticks between timeouts</span>
+<span class="doccomment">/// configured by the provided [`RaftConfig`]. Any consistent time interval between ticks may be chosen, but the time</span>
+<span class="doccomment">/// interval and [`RaftConfig`] must be the same on all peers in a group. Shorter timeouts will allow Raft to react</span>
+<span class="doccomment">/// quicker to network disruptions, but may result in spurious leadership changes when the network latency exceeds</span>
+<span class="doccomment">/// `time_interval * election_timeout_ticks`.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Message delivery</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Unicast message delivery is assumed to be non-lossy in order for replication to make progress. In other words, once</span>
+<span class="doccomment">/// a non-broadcast [`SendableRaftMessage`] is returned from an API such as [`append`], [`receive`], or [`timer_tick`],</span>
+<span class="doccomment">/// it must be retained and retransmitted until it is confirmed to have been processed by [`receive`] on its</span>
+<span class="doccomment">/// destination. Messages may be safely delivered out-of-order or more than once, however.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// To prevent unbounded queueing, the API is designed to only ever return a bounded amount of unacknowledged unicast</span>
+<span class="doccomment">/// message data. This amount can be approximately controlled by [`replication_chunk_size`].</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// [`append`]: Self::append</span>
+<span class="doccomment">/// [`leader`]: Self::leader</span>
+<span class="doccomment">/// [`receive`]: Self::receive</span>
+<span class="doccomment">/// [`replication_chunk_size`]: RaftConfig::replication_chunk_size</span>
+<span class="doccomment">/// [`SendableRaftMessage`]: crate::message::SendableRaftMessage</span>
+<span class="doccomment">/// [`take_committed`]: Self::take_committed</span>
+<span class="doccomment">/// [`timer_tick`]: Self::timer_tick</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">RaftNode</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span> {
+    <span class="ident">state</span>: <span class="ident">RaftState</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span>,
+}
+
+<span class="doccomment">/// Configurable parameters of a Raft node.</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">RaftConfig</span> {
+    <span class="doccomment">/// The minimum number of timer ticks between leadership elections.</span>
+    <span class="kw">pub</span> <span class="ident">election_timeout_ticks</span>: <span class="ident">u32</span>,
+
+    <span class="doccomment">/// The number of timer ticks between sending heartbeats to peers.</span>
+    <span class="kw">pub</span> <span class="ident">heartbeat_interval_ticks</span>: <span class="ident">u32</span>,
+
+    <span class="doccomment">/// The maximum number of bytes to replicate to a peer at a time.</span>
+    <span class="kw">pub</span> <span class="ident">replication_chunk_size</span>: <span class="ident">usize</span>,
+}
+
+<span class="doccomment">/// An error returned while attempting to append to a Raft log.</span>
+<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">AppendError</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span> {
+    <span class="doccomment">/// The append to the Raft log was cancelled and should be resubmitted to the current Raft leader.</span>
+    <span class="ident">Cancelled</span> {
+        <span class="doccomment">/// Arbitrary data associated with the log entry.</span>
+        <span class="ident">data</span>: <span class="ident">Bytes</span>,
+    },
+    <span class="doccomment">/// An error was returned by the [`RaftLog`](crate::log::RaftLog) implementation.</span>
+    <span class="ident">RaftLogErr</span>(<span class="ident">E</span>),
+}
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span> <span class="ident">RaftNode</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span>
+<span class="kw">where</span> <span class="ident">Log</span>: <span class="ident">RaftLog</span>,
+      <span class="ident">Random</span>: <span class="ident">RngCore</span>,
+      <span class="ident">NodeId</span>: <span class="ident">Ord</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="ident">Display</span>,
+{
+    <span class="doccomment">/// Constructs a new Raft node with specified peers and configuration.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// The Raft node will start with an empty initial state. The `log` provided should also be in an empty initial</span>
+    <span class="doccomment">/// state. Each Raft node in a group must be constructed with the same set of peers and `config`. `peers` may</span>
+    <span class="doccomment">/// contain `node_id` or omit it to the same effect. `rand` must produce different values on every node in a group.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(
+        <span class="ident">node_id</span>: <span class="ident">NodeId</span>,
+        <span class="ident">peers</span>:   <span class="ident">BTreeSet</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span>,
+        <span class="ident">log</span>:     <span class="ident">Log</span>,
+        <span class="ident">random</span>:  <span class="ident">Random</span>,
+        <span class="ident">config</span>:  <span class="ident">RaftConfig</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="ident">state</span>: <span class="ident">RaftState::new</span>(
+                <span class="ident">node_id</span>,
+                <span class="ident">peers</span>,
+                <span class="ident">log</span>,
+                <span class="ident">random</span>,
+                <span class="ident">config</span>,
+            ),
+        }
+    }
+
+
+    <span class="doccomment">/// Request appending an entry with arbitrary `data` to the Raft log, returning messages to be sent.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// See [&quot;Message delivery&quot;] for details about delivery requirements for the returned messages.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// # Errors</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// If this request would immediately be cancelled, then an error is returned.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// [&quot;Message delivery&quot;]: RaftNode#message-delivery</span>
+    <span class="attribute">#[<span class="ident">must_use</span> <span class="op">=</span> <span class="string">&quot;This function returns Raft messages to be sent.&quot;</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">append</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Into</span><span class="op">&lt;</span><span class="ident">Bytes</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>, <span class="ident">data</span>: <span class="ident">T</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">SendableRaftMessage</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;_</span>, <span class="ident">AppendError</span><span class="op">&lt;</span><span class="ident">Log::Error</span><span class="op">&gt;</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> () <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">client_request</span>(<span class="ident">data</span>.<span class="ident">into</span>())<span class="question-mark">?</span>;
+        <span class="prelude-val">Ok</span>(<span class="self">self</span>.<span class="ident">append_entries</span>())
+    }
+
+    <span class="doccomment">/// Returns this node&#39;s configurable parameters.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">config</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">RaftConfig</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">config</span>()
+    }
+
+    <span class="doccomment">/// Returns whether this node is the leader of the latest known term.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_leader</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">is_leader</span>()
+    }
+
+    <span class="doccomment">/// Returns the index of the last [`LogEntry`] which has been committed and thus may be returned by</span>
+    <span class="doccomment">/// [`take_committed`].</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// [`take_committed`]: Self::take_committed</span>
+    <span class="doccomment">/// [`LogEntry`]: crate::message::LogEntry</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">last_committed_log_index</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">LogIndex</span> {
+        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">state</span>.<span class="ident">commit_idx</span>()
+    }
+
+    <span class="doccomment">/// Returns the ID of the leader, if there is one, of the latest known term, along with the term.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">leader</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> (<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">NodeId</span><span class="op">&gt;</span>, <span class="ident">TermId</span>) {
+        <span class="kw">let</span> (<span class="ident">leader</span>, <span class="ident">term</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">leader</span>();
+        (<span class="ident">leader</span>, <span class="kw-2">*</span><span class="ident">term</span>)
+    }
+
+    <span class="doccomment">/// Returns a reference to the Raft log storage.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">log</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">Log</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">log</span>()
+    }
+
+    <span class="doccomment">/// Returns a mutable reference to the Raft log storage.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">log_mut</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">Log</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">log_mut</span>()
+    }
+
+    <span class="doccomment">/// Returns this node&#39;s ID.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">node_id</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">NodeId</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">node_id</span>()
+    }
+
+    <span class="doccomment">/// Returns the IDs of this node&#39;s peers.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">peers</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">BTreeSet</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">peers</span>()
+    }
+
+    <span class="doccomment">/// Processes receipt of a `message` from a peer with ID `from`, returning messages to be sent.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// See [&quot;Message delivery&quot;] for details about delivery requirements for the returned messages.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// [&quot;Message delivery&quot;]: RaftNode#message-delivery</span>
+    <span class="attribute">#[<span class="ident">must_use</span> <span class="op">=</span> <span class="string">&quot;This function returns Raft messages to be sent.&quot;</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">receive</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+        <span class="ident">message</span>: <span class="ident">RaftMessage</span>,
+        <span class="ident">from</span>:    <span class="ident">NodeId</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">SendableRaftMessage</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;_</span> {
+        <span class="kw">let</span> <span class="ident">message</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">receive</span>(<span class="ident">message</span>, <span class="ident">from</span>);
+        <span class="ident">message</span>.<span class="ident">into_iter</span>().<span class="ident">chain</span>(<span class="self">self</span>.<span class="ident">append_entries</span>())
+    }
+
+    <span class="doccomment">/// Returns the replication state corresponding to the peer with ID `peer_node_id`.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">replication_state</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">peer_node_id</span>: <span class="kw-2">&amp;</span><span class="ident">NodeId</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">ReplicationState</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">replication_state</span>(<span class="ident">peer_node_id</span>)
+    }
+
+    <span class="doccomment">/// Returns a reference to the low-level state of the Raft node.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">state</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="ident">RaftState</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span> {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">state</span>
+    }
+
+    <span class="doccomment">/// Returns a mutable reference to the low-level state of the Raft node.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">state_mut</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">RaftState</span><span class="op">&lt;</span><span class="ident">Log</span>, <span class="ident">Random</span>, <span class="ident">NodeId</span><span class="op">&gt;</span> {
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>.<span class="ident">state</span>
+    }
+
+    <span class="doccomment">/// Returns an iterator yielding committed [log entries][`LogEntry`]. A given [`LogEntry`] will be yielded only once</span>
+    <span class="doccomment">/// over the lifetime of a [`RaftNode`]. See [&quot;Appending entries to the distributed log&quot;] for details about log</span>
+    <span class="doccomment">/// commital.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// [&quot;Appending entries to the distributed log&quot;]: RaftNode#appending-entries-to-the-distributed-log</span>
+    <span class="doccomment">/// [`LogEntry`]: crate::message::LogEntry</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">take_committed</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">CommittedIter</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span>, <span class="ident">Log</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">take_committed</span>()
+    }
+
+    <span class="doccomment">/// Ticks forward this node&#39;s internal clock by one tick, returning messages to be sent.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// See [&quot;Message delivery&quot;] for details about delivery requirements for the returned messages.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// [&quot;Message delivery&quot;]: RaftNode#message-delivery</span>
+    <span class="attribute">#[<span class="ident">must_use</span> <span class="op">=</span> <span class="string">&quot;This function returns Raft messages to be sent.&quot;</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">timer_tick</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">SendableRaftMessage</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;_</span> {
+        <span class="kw">let</span> <span class="ident">message</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">timer_tick</span>();
+        <span class="ident">message</span>.<span class="ident">into_iter</span>().<span class="ident">chain</span>(<span class="self">self</span>.<span class="ident">append_entries</span>())
+    }
+
+    <span class="attribute">#[<span class="ident">must_use</span> <span class="op">=</span> <span class="string">&quot;This function returns Raft messages to be sent.&quot;</span>]</span>
+    <span class="kw">fn</span> <span class="ident">append_entries</span>(
+        <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="self">self</span>,
+    ) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">SendableRaftMessage</span><span class="op">&lt;</span><span class="ident">NodeId</span><span class="op">&gt;</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;_</span> {
+        <span class="kw">let</span> <span class="ident">peers</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">peers</span>().<span class="ident">clone</span>().<span class="ident">into_iter</span>();
+        <span class="ident">peers</span>.<span class="ident">flat_map</span>(<span class="kw">move</span> <span class="op">|</span><span class="ident">peer</span><span class="op">|</span> <span class="self">self</span>.<span class="ident">state</span>.<span class="ident">append_entries</span>(<span class="ident">peer</span>))
+    }
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="simple_raft" data-search-index-js="../../search-index.js" data-search-js="../../search.js"></div>
+    <script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script>
+</body></html>

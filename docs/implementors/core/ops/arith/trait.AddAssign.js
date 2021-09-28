@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["simple_raft"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.55.0/core/ops/arith/trait.AddAssign.html\" title=\"trait core::ops::arith::AddAssign\">AddAssign</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.55.0/std/primitive.u64.html\">u64</a>&gt; for <a class=\"struct\" href=\"simple_raft/message/struct.TermId.html\" title=\"struct simple_raft::message::TermId\">TermId</a>","synthetic":false,"types":["simple_raft::message::TermId"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

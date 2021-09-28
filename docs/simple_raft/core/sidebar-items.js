@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["quorum_size","Computes the minimum size of a quorum of nodes in a Raft group."]],"struct":[["RaftState","The complete state of a Raft node."],["ReplicationState","The state of Raft log replication from a Raft node to one of its peers."]]});

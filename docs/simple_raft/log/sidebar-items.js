@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["mem","A naive in-memory implementation of `RaftLog`, primarily for testing."]],"struct":[["CommittedIter","An iterator yielding committed log entries."]],"trait":[["RaftLog","An interface for storage of the Raft log of a `RaftNode`."]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["AppendError","An error returned while attempting to append to a Raft log."]],"struct":[["RaftConfig","Configurable parameters of a Raft node."],["RaftNode","A Raft node, used for replicating a strongly-consistent distributed log of entries with arbitrary data amongst its peers."]]});
