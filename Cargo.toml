@@ -1,9 +1,15 @@
 [package]
-authors = ["Open Whisper Systems", "jessa0"]
 name    = "raft"
 version = "0.1.0"
-license = "AGPL-3.0-or-later"
 edition = "2018"
+
+description = "A minimal implementation of the Raft consensus algorithm"
+license     = "AGPL-3.0-or-later"
+repository  = "https://github.com/simple-raft-rs/raft-rs"
+categories  = ["database-implementations", "no-std"]
+keywords    = ["raft", "no_std"]
+
+exclude = [".github/"]
 
 [features]
 default = ["prost"]
